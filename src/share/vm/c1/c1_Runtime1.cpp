@@ -139,6 +139,15 @@ void Runtime1::generate_blob_for(BufferBlob* buffer_blob, StubID id) {
     case slow_subtype_check_id:
     case fpu2long_stub_id:
     case unwind_exception_id:
+    case c1x_verify_pointer_id:
+    case c1x_unwind_exception_call_id:
+    case c1x_slow_subtype_check_id:
+    case c1x_arithmetic_frem_id:
+    case c1x_arithmetic_drem_id:
+#ifndef TIERED
+    case counter_overflow_id: // Not generated outside the tiered world
+#endif
+#ifdef SPARC
     case counter_overflow_id:
 #if defined(SPARC) || defined(PPC)
     case handle_exception_nofpu_id:  // Unused on sparc
@@ -397,6 +406,9 @@ extern void vm_exit(int code);
 JRT_ENTRY_NO_ASYNC(static address, exception_handler_for_pc_helper(JavaThread* thread, oopDesc* ex, address pc, nmethod*& nm))
 
   Handle exception(thread, ex);
+  if (UseC1X && exception.is_null()) {
+    exception = Exceptions::new_exception(thread, vmSymbols::java_lang_NullPointerException(), NULL);
+  }
   nm = CodeCache::find_nmethod(pc);
   assert(nm != NULL, "this is not an nmethod");
   // Adjust the pc as needed/
@@ -615,7 +627,19 @@ JRT_LEAF(void, Runtime1::monitorexit(JavaThread* thread, BasicObjectLock* lock))
   EXCEPTION_MARK;
 
   oop obj = lock->obj();
-  assert(obj->is_oop(), "must be NULL or an object");
+
+#ifdef DEBUG
+  if (!obj->is_oop()) {
+    ResetNoHandleMark rhm;
+    nmethod* method = thread->last_frame().cb()->as_nmethod_or_null();
+    if (method != NULL) {
+      tty->print_cr("ERROR in monitorexit in method %s", method->name());
+    }
+    thread->print_stack_on(tty);
+    assert(false, "invalid lock object pointer dected");
+  }
+#endif
+
   if (UseFastLocking) {
     // When using fast locking, the compiled code has already tried the fast case
     ObjectSynchronizer::slow_exit(obj, lock->lock(), THREAD);
@@ -811,7 +835,9 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* thread, Runtime1::StubID stub_i
           assert(k != NULL && !k->is_klass(), "must be class mirror or other Java constant");
         }
         break;
-      default: Unimplemented();
+      default:
+        tty->print_cr("Unhandled bytecode: %d stub_id=%d caller=%s bci=%d pc=%d", code, stub_id, caller_method->name()->as_C_string(), bci, caller_frame.pc());
+        Unimplemented();
     }
     // convert to handle
     load_klass = Handle(THREAD, k);

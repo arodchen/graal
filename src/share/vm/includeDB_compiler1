@@ -449,6 +449,42 @@ top.hpp                                 c1_globals.hpp
 
 vmStructs.hpp                           c1_Runtime1.hpp
 
+compileBroker.cpp                       c1x_Compiler.hpp
 c1_Canonicalizer.cpp                    c1_ValueStack.hpp
+
+c1x_CodeInstaller.hpp                   c1x_Compiler.hpp
+
+c1x_CodeInstaller.cpp                   c1x_CodeInstaller.hpp
+c1x_CodeInstaller.cpp                   c1x_Compiler.hpp
+c1x_CodeInstaller.cpp                   c1x_TargetMethod.hpp
+c1x_CodeInstaller.cpp                   c1x_VmIds.hpp
+c1x_CodeInstaller.cpp                   c1_Runtime1.hpp
+c1x_CodeInstaller.cpp                   vmreg.hpp
+c1x_CodeInstaller.cpp                   vmreg_<arch>.inline.hpp
+
+c1x_Compiler.hpp                        abstractCompiler.hpp
+
+c1x_Compiler.cpp                        c1x_Compiler.hpp
+c1x_Compiler.cpp                        c1x_TargetMethod.hpp
+c1x_Compiler.cpp                        c1x_VMExits.hpp
+c1x_Compiler.cpp                        c1x_VMEntries.hpp
+c1x_Compiler.cpp                        c1x_VmIds.hpp
+
+c1x_TargetMethod.cpp                    c1x_TargetMethod.hpp
+
+c1x_VMEntries.cpp                       c1x_CodeInstaller.hpp
+c1x_VMEntries.cpp                       c1x_VMEntries.hpp
+c1x_VMEntries.cpp                       c1x_Compiler.hpp
+c1x_VMEntries.cpp                       c1x_TargetMethod.hpp
+c1x_VMEntries.cpp                       c1x_VMExits.hpp
+c1x_VMEntries.cpp                       c1x_VmIds.hpp
+c1x_VMEntries.cpp                       oopFactory.hpp
+c1x_VMEntries.cpp                       c1_Runtime1.hpp
+
+c1x_VMExits.cpp                         c1x_Compiler.hpp
+c1x_VMExits.cpp                         javaCalls.hpp
+c1x_VMExits.cpp                         c1x_VMExits.hpp
+
+c1x_VmIds.cpp                           c1x_VmIds.hpp
 
 c1_LIR.cpp                              c1_ValueStack.hpp

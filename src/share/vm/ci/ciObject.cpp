@@ -49,13 +49,19 @@
 ciObject::ciObject(oop o) {
   ASSERT_IN_VM;
   if (ciObjectFactory::is_initialized()) {
-    _handle = JNIHandles::make_local(o);
+    if (UseC1X) {
+      _handle = JNIHandles::make_global(o);
+      _temp_global = true;
+    } else {
+      _handle = JNIHandles::make_local(o);
+    }
   } else {
     _handle = JNIHandles::make_global(o);
   }
   _klass = NULL;
   _ident = 0;
   init_flags_from(o);
+  _temp_global = false;
 }
 
 // ------------------------------------------------------------------
@@ -64,13 +70,19 @@ ciObject::ciObject(oop o) {
 ciObject::ciObject(Handle h) {
   ASSERT_IN_VM;
   if (ciObjectFactory::is_initialized()) {
-    _handle = JNIHandles::make_local(h());
+    if (UseC1X) {
+      _handle = JNIHandles::make_global(h);
+      _temp_global = true;
+    } else {
+      _handle = JNIHandles::make_local(h());
+    }
   } else {
     _handle = JNIHandles::make_global(h);
   }
   _klass = NULL;
   _ident = 0;
   init_flags_from(h());
+  _temp_global = false;
 }
 
 // ------------------------------------------------------------------
@@ -84,6 +96,7 @@ ciObject::ciObject(ciKlass* klass) {
   _handle = NULL;
   _klass = klass;
   _ident = 0;
+  _temp_global = false;
 }
 
 // ------------------------------------------------------------------
@@ -95,6 +108,7 @@ ciObject::ciObject() {
   _handle = NULL;
   _klass = NULL;
   _ident = 0;
+  _temp_global = false;
 }
 
 // ------------------------------------------------------------------

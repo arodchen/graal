@@ -254,7 +254,70 @@
   template(makeDynamicCallSite_signature, "(Ljava/dyn/MethodHandle;Ljava/lang/String;Ljava/dyn/MethodType;Ljava/lang/Object;Lsun/dyn/MemberName;I)Ljava/dyn/CallSite;") \
   NOT_LP64(  do_alias(machine_word_signature,         int_signature)  )                           \
   LP64_ONLY( do_alias(machine_word_signature,         long_signature) )                           \
-                                                                                                  \
+                                                                                                                        \
+  /* support for C1X */                                                                                                 \
+  template(com_sun_hotspot_c1x_VMExits,               "com/sun/hotspot/c1x/VMExits")                                    \
+  template(com_sun_hotspot_c1x_HotSpotMethodResolved, "com/sun/hotspot/c1x/HotSpotMethodResolved")                      \
+  template(com_sun_hotspot_c1x_HotSpotTargetMethod,   "com/sun/hotspot/c1x/HotSpotTargetMethod")                        \
+  template(com_sun_hotspot_c1x_HotSpotField,          "com/sun/hotspot/c1x/HotSpotField")                               \
+  template(com_sun_hotspot_c1x_HotSpotTypeResolved,   "com/sun/hotspot/c1x/HotSpotTypeResolved")                        \
+  template(com_sun_hotspot_c1x_HotSpotExceptionHandler,"com/sun/hotspot/c1x/HotSpotExceptionHandler")                   \
+  template(com_sun_hotspot_c1x_HotSpotProxy,          "com/sun/hotspot/c1x/HotSpotProxy")                               \
+  template(com_sun_hotspot_c1x_Compiler,              "com/sun/hotspot/c1x/Compiler")                                   \
+  template(com_sun_cri_ri_RiMethod,                   "com/sun/cri/ri/RiMethod")                                        \
+  template(com_sun_cri_ri_RiField,                    "com/sun/cri/ri/RiField")                                         \
+  template(com_sun_cri_ri_RiType,                     "com/sun/cri/ri/RiType")                                          \
+  template(com_sun_cri_ri_RiConstantPool,             "com/sun/cri/ri/RiConstantPool")                                  \
+  template(com_sun_cri_ri_RiExceptionHandler,         "com/sun/cri/ri/RiExceptionHandler")                              \
+  template(com_sun_cri_ci_CiTargetMethod,             "com/sun/cri/ci/CiTargetMethod")                                  \
+  template(com_sun_cri_ci_CiTargetMethod_Site,        "com/sun/cri/ci/CiTargetMethod$Site")                             \
+  template(com_sun_cri_ci_CiTargetMethod_Call,        "com/sun/cri/ci/CiTargetMethod$Call")                             \
+  template(com_sun_cri_ci_CiTargetMethod_DataPatch,   "com/sun/cri/ci/CiTargetMethod$DataPatch")                        \
+  template(com_sun_cri_ci_CiTargetMethod_Safepoint,   "com/sun/cri/ci/CiTargetMethod$Safepoint")                        \
+  template(com_sun_cri_ci_CiTargetMethod_ExceptionHandler, "com/sun/cri/ci/CiTargetMethod$ExceptionHandler")            \
+  template(com_sun_cri_ci_CiTargetMethod_Mark,        "com/sun/cri/ci/CiTargetMethod$Mark")                             \
+  template(com_sun_cri_ci_CiBitMap,                   "com/sun/cri/ci/CiBitMap")                                        \
+  template(com_sun_cri_ci_CiDebugInfo,                "com/sun/cri/ci/CiDebugInfo")                                     \
+  template(com_sun_cri_ci_CiDebugInfo_Frame,          "com/sun/cri/ci/CiDebugInfo$Frame")                               \
+  template(com_sun_cri_ci_CiValue,                    "com/sun/cri/ci/CiValue")                                         \
+  template(com_sun_cri_ci_CiStackSlot,                "com/sun/cri/ci/CiStackSlot")                                     \
+  template(com_sun_cri_ci_CiRegisterValue,            "com/sun/cri/ci/CiRegisterValue")                                 \
+  template(com_sun_cri_ci_CiRegister,                 "com/sun/cri/ci/CiRegister")                                      \
+  template(com_sun_cri_ci_CiCodePos,                  "com/sun/cri/ci/CiCodePos")                                       \
+  template(com_sun_cri_ci_CiConstant,                 "com/sun/cri/ci/CiConstant")                                      \
+  template(com_sun_cri_ci_CiKind,                     "com/sun/cri/ci/CiKind")                                          \
+  template(com_sun_cri_ci_CiRuntimeCall,              "com/sun/cri/ci/CiRuntimeCall")                                   \
+  template(compileMethod_name,                        "compileMethod")                                                  \
+  template(compileMethod_signature,                   "(JLjava/lang/String;I)V")                                        \
+  template(setOption_name,                            "setOption")                                                      \
+  template(setOption_signature,                       "(Ljava/lang/String;)Z")                                          \
+  template(createRiMethodResolved_name,               "createRiMethodResolved")                                         \
+  template(createRiMethodResolved_signature,          "(JLjava/lang/String;)Lcom/sun/cri/ri/RiMethod;")                 \
+  template(createRiMethodUnresolved_name,             "createRiMethodUnresolved")                                       \
+  template(createRiMethodUnresolved_signature,        "(Ljava/lang/String;Ljava/lang/String;Lcom/sun/cri/ri/RiType;)Lcom/sun/cri/ri/RiMethod;") \
+  template(createRiSignature_name,                    "createRiSignature")                                              \
+  template(createRiSignature_signature,               "(Ljava/lang/String;)Lcom/sun/cri/ri/RiSignature;")               \
+  template(createRiField_name,                        "createRiField")                                                  \
+  template(createRiField_signature,                   "(Lcom/sun/cri/ri/RiType;Ljava/lang/String;Lcom/sun/cri/ri/RiType;I)Lcom/sun/cri/ri/RiField;") \
+  template(createRiType_name,                         "createRiType")                                                   \
+  template(createRiType_signature,                    "(JLjava/lang/String;)Lcom/sun/cri/ri/RiType;")                   \
+  template(createRiTypePrimitive_name,                "createRiTypePrimitive")                                          \
+  template(createRiTypePrimitive_signature,           "(I)Lcom/sun/cri/ri/RiType;")                                     \
+  template(createRiTypeUnresolved_name,               "createRiTypeUnresolved")                                         \
+  template(createRiTypeUnresolved_signature,          "(Ljava/lang/String;J)Lcom/sun/cri/ri/RiType;")                   \
+  template(createRiConstantPool_name,                 "createRiConstantPool")                                           \
+  template(createRiConstantPool_signature,            "(J)Lcom/sun/cri/ri/RiConstantPool;")                             \
+  template(createCiConstant_name,                     "createCiConstant")                                               \
+  template(createCiConstant_signature,                "(Lcom/sun/cri/ci/CiKind;J)Lcom/sun/cri/ci/CiConstant;")          \
+  template(createCiConstantFloat_name,                "createCiConstantFloat")                                          \
+  template(createCiConstantFloat_signature,           "(F)Lcom/sun/cri/ci/CiConstant;")                                 \
+  template(createCiConstantDouble_name,               "createCiConstantDouble")                                         \
+  template(createCiConstantDouble_signature,          "(D)Lcom/sun/cri/ci/CiConstant;")                                 \
+  template(createCiConstantObject_name,               "createCiConstantObject")                                         \
+  template(createCiConstantObject_signature,          "(Ljava/lang/Object;)Lcom/sun/cri/ci/CiConstant;")                \
+  template(getVMExits_name,                           "getVMExits")                                                     \
+  template(getVMExits_signature,                      "()Lcom/sun/hotspot/c1x/VMExits;")                                \
+                                                                                                                        \
   /* common method and field names */                                                             \
   template(object_initializer_name,                   "<init>")                                   \
   template(class_initializer_name,                    "<clinit>")                                 \
@@ -349,6 +412,7 @@
   template(erasedType_name,                           "erasedType")                               \
   template(genericInvoker_name,                       "genericInvoker")                           \
   template(append_name,                               "append")                                   \
+  template(id_name,                                   "id")                                       \
                                                                                                   \
   /* non-intrinsic name/signature pairs: */                                                       \
   template(register_method_name,                      "register")                                 \

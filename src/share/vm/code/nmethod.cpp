@@ -793,12 +793,23 @@ nmethod::nmethod(
     _stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
 
     // Exception handler and deopt handler are in the stub section
-    _exception_offset        = _stub_offset          + offsets->value(CodeOffsets::Exceptions);
-    _deoptimize_offset       = _stub_offset          + offsets->value(CodeOffsets::Deopt);
-    if (has_method_handle_invokes()) {
-      _deoptimize_mh_offset  = _stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+    if (UseC1X) {
+      // c1x produces no stub section
+      _exception_offset        = instructions_offset() + offsets->value(CodeOffsets::Exceptions);
+      _deoptimize_offset       = instructions_offset() + offsets->value(CodeOffsets::Deopt);
+      if (has_method_handle_invokes()) {
+        _deoptimize_mh_offset    = instructions_offset() + offsets->value(CodeOffsets::DeoptMH);
+      } else {
+        _deoptimize_mh_offset  = -1;
+      }
     } else {
-      _deoptimize_mh_offset  = -1;
+      _exception_offset        = _stub_offset          + offsets->value(CodeOffsets::Exceptions);
+      _deoptimize_offset       = _stub_offset          + offsets->value(CodeOffsets::Deopt);
+      if (has_method_handle_invokes()) {
+        _deoptimize_mh_offset  = _stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+      } else {
+        _deoptimize_mh_offset  = -1;
+      }
     }
     if (offsets->value(CodeOffsets::UnwindHandler) != -1) {
       _unwind_handler_offset = code_offset()         + offsets->value(CodeOffsets::UnwindHandler);
@@ -2299,7 +2310,7 @@ void nmethod::verify_scopes() {
         // information in a table.
         break;
     }
-    assert(stub == NULL || stub_contains(stub), "static call stub outside stub section");
+    assert(UseC1X || stub == NULL || stub_contains(stub), "static call stub outside stub section");
   }
 }
 
@@ -2541,6 +2552,7 @@ void nmethod::print_nmethod_labels(outputStream* stream, address block_begin) {
   if (block_begin == entry_point())             stream->print_cr("[Entry Point]");
   if (block_begin == verified_entry_point())    stream->print_cr("[Verified Entry Point]");
   if (block_begin == exception_begin())         stream->print_cr("[Exception Handler]");
+  if (block_begin == unwind_handler_begin())    stream->print_cr("[Unwind Handler]");
   if (block_begin == stub_begin())              stream->print_cr("[Stub Code]");
   if (block_begin == deopt_handler_begin())     stream->print_cr("[Deopt Handler Code]");
 
