@@ -777,7 +777,14 @@ address SharedRuntime::continuation_for_implicit_exception(JavaThread* thread,
 #ifndef PRODUCT
           _implicit_null_throws++;
 #endif
-          target_pc = nm->continuation_for_implicit_exception(pc);
+          if (UseC1X) {
+            if (TraceSignals) {
+              tty->print_cr(err_msg("calling implicit call stub relative pc=%d method name = %s", pc - nm->entry_point(), nm->method()->name()->as_C_string()));
+            }
+            target_pc = Runtime1::entry_for(Runtime1::c1x_global_implicit_null_id);
+          } else {
+            target_pc = nm->continuation_for_implicit_exception(pc);
+          }
           // If there's an unexpected fault, target_pc might be NULL,
           // in which case we want to fall through into the normal
           // error handling code.
@@ -793,7 +800,12 @@ address SharedRuntime::continuation_for_implicit_exception(JavaThread* thread,
 #ifndef PRODUCT
         _implicit_div0_throws++;
 #endif
-        target_pc = nm->continuation_for_implicit_exception(pc);
+        if (UseC1X) {
+          tty->print_cr("c1x implicit div0");
+          target_pc = Runtime1::entry_for(Runtime1::c1x_throw_div0_exception_id);
+        } else {
+          target_pc = nm->continuation_for_implicit_exception(pc);
+        }
         // If there's an unexpected fault, target_pc might be NULL,
         // in which case we want to fall through into the normal
         // error handling code.

@@ -491,6 +491,9 @@ void CompileQueue::remove(CompileTask* task)
     assert(task == _last, "Sanity");
     _last = task->prev();
   }
+
+  // (tw) Immediately set compiling flag.
+  JavaThread::current()->as_CompilerThread()->set_compiling(true);
   --_size;
 }
 
@@ -544,6 +547,74 @@ CompilerCounters::CompilerCounters(const char* thread_name, int instance, TRAPS)
   }
 }
 
+// Bootstrap the C1X compiler. Compiles all methods until compile queue is empty and no compilation is active.
+void CompileBroker::bootstrap_c1x() {
+  HandleMark hm;
+  Thread* THREAD = Thread::current();
+  tty->print_cr("Bootstrapping C1X...");
+
+  C1XCompiler* compiler = C1XCompiler::instance();
+  if (compiler == NULL) fatal("must use flag -XX:+UseC1X");
+
+  jlong start = os::javaTimeMillis();
+
+  instanceKlass* klass = (instanceKlass*)SystemDictionary::Object_klass()->klass_part();
+  methodOop method = klass->find_method(vmSymbols::object_initializer_name(), vmSymbols::void_method_signature());
+  CompileBroker::compile_method(method, -1, 0, method, 0, "initial compile of object initializer", THREAD);
+  if (HAS_PENDING_EXCEPTION) {
+    CLEAR_PENDING_EXCEPTION;
+    fatal("error inserting object initializer into compile queue");
+  }
+
+  int z = 0;
+  while (true) {
+    {
+      HandleMark hm;
+      ResourceMark rm;
+      MutexLocker locker(_c1_method_queue->lock(), Thread::current());
+      if (_c1_method_queue->is_empty()) {
+        MutexLocker mu(Threads_lock); // grab Threads_lock
+        JavaThread* current = Threads::first();
+        bool compiling = false;
+        while (current != NULL) {
+          if (current->is_Compiler_thread()) {
+            CompilerThread* comp_thread = current->as_CompilerThread();
+            if (comp_thread->is_compiling()) {
+              if (TraceC1X >= 4) {
+                tty->print_cr("Compile queue empty, but following thread is still compiling:");
+                comp_thread->print();
+              }
+              compiling = true;
+            }
+          }
+          current = current->next();
+        }
+        if (!compiling) {
+          break;
+        }
+      }
+      if (TraceC1X >= 4) {
+        _c1_method_queue->print();
+      }
+    }
+
+    {
+      ThreadToNativeFromVM trans(JavaThread::current());
+      usleep(1000);
+    }
+    ++z;
+  }
+
+  // Do a full garbage collection.
+  Universe::heap()->collect(GCCause::_java_lang_system_gc);
+
+  jlong diff = os::javaTimeMillis() - start;
+  tty->print_cr("Finished bootstrap in %d ms", diff);
+  if (CITime) CompileBroker::print_times();
+  tty->print_cr("===========================================================================");
+}
+
+
 // ------------------------------------------------------------------
 // CompileBroker::compilation_init
 //
@@ -556,9 +627,14 @@ void CompileBroker::compilation_init() {
   int c1_count = CompilationPolicy::policy()->compiler_count(CompLevel_simple);
   int c2_count = CompilationPolicy::policy()->compiler_count(CompLevel_full_optimization);
 #ifdef COMPILER1
-  if (c1_count > 0) {
-    _compilers[0] = new Compiler();
+  if (UseC1X) {
+	  _compilers[0] = new C1XCompiler();
+  } else if (c1_count > 0) {
+	  _compilers[0] = new Compiler();
   }
+#ifndef COMPILER2
+  _compilers[1] = _compilers[0];
+#endif
 #endif // COMPILER1
 
 #ifdef COMPILER2
@@ -895,6 +971,13 @@ void CompileBroker::compile_method_base(methodHandle method,
   // Acquire our lock.
   {
     MutexLocker locker(queue->lock(), THREAD);
+
+    if (Thread::current()->is_Compiler_thread() && CompilerThread::current()->is_compiling() && !BackgroundCompilation) {
+
+      TRACE_C1X_1("Recursive compile %s!", method->name_and_sig_as_C_string());
+      method->set_not_compilable();
+      return;
+    }
 
     // Make sure the method has not slipped into the queues since
     // last we checked; note that those checks were "fast bail-outs".
@@ -1349,6 +1432,9 @@ void CompileBroker::compiler_thread_loop() {
 
   while (true) {
     {
+      // Unset compiling flag.
+      thread->set_compiling(false);
+
       // We need this HandleMark to avoid leaking VM handles.
       HandleMark hm(thread);
 
@@ -1492,6 +1578,7 @@ void CompileBroker::maybe_block() {
 void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   if (PrintCompilation) {
     ResourceMark rm;
+    tty->print("%s: ", compiler(task->comp_level())->name());
     task->print_line();
   }
   elapsedTimer time;
@@ -1527,15 +1614,17 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   // Allocate a new set of JNI handles.
   push_jni_handle_block();
   jobject target_handle = JNIHandles::make_local(thread, JNIHandles::resolve(task->method_handle()));
-  int compilable = ciEnv::MethodCompilable;
-  {
+  int compilable = ciEnv::MethodCompilable_never;
+  if (MaxCompilationID == -1 || compile_id <= (uint)MaxCompilationID) {
+    compilable = ciEnv::MethodCompilable;
     int system_dictionary_modification_counter;
     {
       MutexLocker locker(Compile_lock, thread);
       system_dictionary_modification_counter = SystemDictionary::number_of_modifications();
     }
 
-    NoHandleMark  nhm;
+	// (tw) Check if we may do this?
+    // NoHandleMark  nhm;
     ThreadToNativeFromVM ttn(thread);
 
     ciEnv ci_env(task, system_dictionary_modification_counter);
