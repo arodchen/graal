@@ -66,6 +66,8 @@ char**  Arguments::_jvm_flags_array             = NULL;
 int     Arguments::_num_jvm_flags               = 0;
 char**  Arguments::_jvm_args_array              = NULL;
 int     Arguments::_num_jvm_args                = 0;
+char**  Arguments::_c1x_args_array              = NULL;
+int     Arguments::_num_c1x_args                = 0;
 char*  Arguments::_java_command                 = NULL;
 SystemProperty* Arguments::_system_properties   = NULL;
 const char*  Arguments::_gc_log_filename        = NULL;
@@ -741,6 +743,10 @@ void Arguments::build_jvm_args(const char* arg) {
 
 void Arguments::build_jvm_flags(const char* arg) {
   add_string(&_jvm_flags_array, &_num_jvm_flags, arg);
+}
+
+void Arguments::add_c1x_arg(const char* arg) {
+  add_string(&_c1x_args_array, &_num_c1x_args, arg);
 }
 
 // utility function to return a string that concatenates all
@@ -2731,6 +2737,42 @@ SOLARIS_ONLY(
           return JNI_EINVAL;
         }
       }
+    } else if (match_option(option, "-graal", &tail)) {
+      if (PrintVMOptions) {
+        tty->print("Running Graal VM... ");
+      }
+      UseC1X = true;
+      BootstrapC1X = true;
+      const int BUFFER_SIZE = 1024;
+      char maxine_dir[BUFFER_SIZE];
+      char graal_dir[BUFFER_SIZE];
+      char temp[BUFFER_SIZE];
+      if (!os::getenv("MAXINE", maxine_dir, sizeof(maxine_dir))) {
+        fatal("Must set MAXINE environment variable to a Maxine project directory.");
+      }
+      if (PrintVMOptions) tty->print("MAXINE=%s", maxine_dir);
+      if (!os::getenv("GRAAL", graal_dir, sizeof(graal_dir))) {
+        fatal("Must set GRAAL environment variable to a Graal project directory.");
+      }
+      if (PrintVMOptions) tty->print_cr(" GRAAL=%s", graal_dir);
+      sprintf(temp, "%s/C1X/bin", maxine_dir);
+      scp_p->add_prefix(temp);
+      sprintf(temp, "%s/CRI/bin", maxine_dir);
+      scp_p->add_prefix(temp);
+      sprintf(temp, "%s/Base/bin", maxine_dir);
+      scp_p->add_prefix(temp);
+      sprintf(temp, "%s/Assembler/bin", maxine_dir);
+      scp_p->add_prefix(temp);
+      sprintf(temp, "%s/c1x4hotspotsrc/HotSpotVM/bin", graal_dir);
+      scp_p->add_prefix(temp);
+      *scp_assembly_required_p = true;
+    } else if (match_option(option, "-C1X:", &tail)) { // -C1X:xxxx
+      // Option for the C1X compiler.
+      if (PrintVMOptions) {
+        tty->print_cr("C1X option %s", tail);
+      }
+      Arguments::add_c1x_arg(tail);
+
     // Unknown option
     } else if (is_bad_option(option, args->ignoreUnrecognized)) {
       return JNI_ERR;

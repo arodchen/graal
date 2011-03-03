@@ -1983,7 +1983,9 @@ void JavaThread::send_thread_stop(oop java_throwable)  {
 
   // Do not throw asynchronous exceptions against the compiler thread
   // (the compiler thread should not be a Java thread -- fix in 1.4.2)
-  if (is_Compiler_thread()) return;
+
+  // (tw) May we do this?
+  //if (is_Compiler_thread()) return;
 
   {
     // Actually throw the Throwable against the target Thread - however
@@ -2921,6 +2923,7 @@ CompilerThread::CompilerThread(CompileQueue* queue, CompilerCounters* counters)
   _task  = NULL;
   _queue = queue;
   _counters = counters;
+  _is_compiling = false;
   _buffer_blob = NULL;
 
 #ifndef PRODUCT
@@ -3885,7 +3888,9 @@ GrowableArray<JavaThread*>* Threads::get_pending_threads(int count,
   {
     MutexLockerEx ml(doLock ? Threads_lock : NULL);
     ALL_JAVA_THREADS(p) {
-      if (p->is_Compiler_thread()) continue;
+      
+      // (tw) May we do this?
+      //if (p->is_Compiler_thread()) continue;
 
       address pending = (address)p->current_pending_monitor();
       if (pending == monitor) {             // found a match

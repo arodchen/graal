@@ -814,12 +814,23 @@ nmethod::nmethod(
     // Exception handler and deopt handler are in the stub section
     assert(offsets->value(CodeOffsets::Exceptions) != -1, "must be set");
     assert(offsets->value(CodeOffsets::Deopt     ) != -1, "must be set");
-    _exception_offset        = _stub_offset          + offsets->value(CodeOffsets::Exceptions);
-    _deoptimize_offset       = _stub_offset          + offsets->value(CodeOffsets::Deopt);
-    if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-      _deoptimize_mh_offset  = _stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+    if (UseC1X) {
+      // c1x produces no (!) stub section
+      _exception_offset        = code_offset()          + offsets->value(CodeOffsets::Exceptions);
+      _deoptimize_offset       = code_offset()          + offsets->value(CodeOffsets::Deopt);
+      if (offsets->value(CodeOffsets::DeoptMH) != -1) {
+        _deoptimize_mh_offset  = code_offset()          + offsets->value(CodeOffsets::DeoptMH);
+      } else {
+        _deoptimize_mh_offset  = -1;
+      }
     } else {
-      _deoptimize_mh_offset  = -1;
+      _exception_offset        = _stub_offset          + offsets->value(CodeOffsets::Exceptions);
+      _deoptimize_offset       = _stub_offset          + offsets->value(CodeOffsets::Deopt);
+      if (offsets->value(CodeOffsets::DeoptMH) != -1) {
+        _deoptimize_mh_offset  = _stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+      } else {
+        _deoptimize_mh_offset  = -1;
+      }
     }
     if (offsets->value(CodeOffsets::UnwindHandler) != -1) {
       _unwind_handler_offset = code_offset()         + offsets->value(CodeOffsets::UnwindHandler);
@@ -1109,6 +1120,12 @@ void nmethod::fix_oop_relocations(address begin, address end, bool initialize_im
 
 ScopeDesc* nmethod::scope_desc_at(address pc) {
   PcDesc* pd = pc_desc_at(pc);
+#ifdef ASSERT
+  if (pd == NULL) {
+    tty->print_cr(err_msg("Missing scope at relative pc %d of method %s", pc - code_begin(), this->method()->name()->as_C_string()));
+    print_pcs();
+  }
+#endif
   guarantee(pd != NULL, "scope must be present");
   return new ScopeDesc(this, pd->scope_decode_offset(),
                        pd->obj_decode_offset(), pd->should_reexecute(),
@@ -2333,7 +2350,7 @@ void nmethod::verify_scopes() {
         // information in a table.
         break;
     }
-    assert(stub == NULL || stub_contains(stub), "static call stub outside stub section");
+    assert(UseC1X || stub == NULL || stub_contains(stub), "static call stub outside stub section");
   }
 }
 

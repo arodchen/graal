@@ -175,6 +175,10 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
   // the vframeArray is created.
   //
 
+  if (TraceDeoptimization) {
+    tty->print_cr("fetching unroll info");
+  }
+
   // Allocate our special deoptimization ResourceMark
   DeoptResourceMark* dmark = new DeoptResourceMark(thread);
   assert(thread->deopt_mark() == NULL, "Pending deopt!");
@@ -1157,7 +1161,6 @@ JRT_LEAF(void, Deoptimization::popframe_preserve_args(JavaThread* thread, int by
 JRT_END
 
 
-#if defined(COMPILER2) || defined(SHARK)
 void Deoptimization::load_class_by_index(constantPoolHandle constant_pool, int index, TRAPS) {
   // in case of an unresolved klass entry, load the class.
   if (constant_pool->tag_at(index).is_unresolved_klass()) {
@@ -1898,40 +1901,3 @@ void Deoptimization::print_statistics() {
     if (xtty != NULL)  xtty->tail("statistics");
   }
 }
-#else // COMPILER2 || SHARK
-
-
-// Stubs for C1 only system.
-bool Deoptimization::trap_state_is_recompiled(int trap_state) {
-  return false;
-}
-
-const char* Deoptimization::trap_reason_name(int reason) {
-  return "unknown";
-}
-
-void Deoptimization::print_statistics() {
-  // no output
-}
-
-void
-Deoptimization::update_method_data_from_interpreter(methodDataHandle trap_mdo, int trap_bci, int reason) {
-  // no udpate
-}
-
-int Deoptimization::trap_state_has_reason(int trap_state, int reason) {
-  return 0;
-}
-
-void Deoptimization::gather_statistics(DeoptReason reason, DeoptAction action,
-                                       Bytecodes::Code bc) {
-  // no update
-}
-
-const char* Deoptimization::format_trap_state(char* buf, size_t buflen,
-                                              int trap_state) {
-  jio_snprintf(buf, buflen, "#%d", trap_state);
-  return buf;
-}
-
-#endif // COMPILER2 || SHARK

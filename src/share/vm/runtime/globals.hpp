@@ -845,13 +845,16 @@ class CommandLineFlags {
   diagnostic(bool, LogCompilation, false,                                   \
           "Log compilation activity in detail to hotspot.log or LogFile")   \
                                                                             \
+  product(intx, MaxCompilationID, -1,                                       \
+          "All methods with greater compilation ID are skipped")            \
+                                                                            \
   product(bool, PrintCompilation, false,                                    \
           "Print compilations")                                             \
                                                                             \
   diagnostic(bool, TraceNMethodInstalls, false,                             \
              "Trace nmethod intallation")                                   \
                                                                             \
-  diagnostic(intx, ScavengeRootsInCode, 0,                                  \
+  diagnostic(intx, ScavengeRootsInCode, 1,                                  \
              "0: do not allow scavengable oops in the code cache; "         \
              "1: allow scavenging from the code cache; "                    \
              "2: emit as many constants as the compiler can see")           \
@@ -1263,7 +1266,7 @@ class CommandLineFlags {
   develop(bool, TraceClassInitialization, false,                            \
           "Trace class initialization")                                     \
                                                                             \
-  develop(bool, TraceExceptions, false,                                     \
+  product(bool, TraceExceptions, false,                                     \
           "Trace exceptions")                                               \
                                                                             \
   develop(bool, TraceICs, false,                                            \
