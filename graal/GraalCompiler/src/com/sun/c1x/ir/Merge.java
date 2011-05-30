@@ -250,4 +250,9 @@ public class Merge extends StateSplit {
         }
         return sb.toString();
     }
+
+    @Override
+    public String shortName() {
+        return "Merge #" + id();
+    }
 }

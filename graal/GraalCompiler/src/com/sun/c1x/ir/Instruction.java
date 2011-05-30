@@ -109,7 +109,7 @@ public abstract class Instruction extends Value {
     public final Instruction appendNext(Instruction next) {
         setNext(next);
         if (next != null) {
-            assert !(this instanceof BlockEnd);
+            //assert !(this instanceof BlockEnd);
             next.isAppended = true;
         }
         return next;
