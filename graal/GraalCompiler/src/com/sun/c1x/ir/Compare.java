@@ -28,42 +28,41 @@ import com.sun.cri.bytecode.*;
 import com.sun.cri.ci.*;
 
 /**
- * The {@code LogicOp} class definition.
+ * The {@code CompareOp} instruction represents comparisons such as equals, not equal, etc.
  */
-public final class LogicOp extends Op2 {
+public final class Compare extends Binary {
 
     private static final int INPUT_COUNT = 0;
     private static final int SUCCESSOR_COUNT = 0;
 
     /**
-     * Constructs a new logic operation instruction.
-     * @param opcode the opcode of the logic operation
-     * @param x the first input into this instruction
-     * @param y the second input into this instruction
+     * Creates a new compare operation.
+     * @param opcode the bytecode opcode
+     * @param kind the result kind
+     * @param x the first input
+     * @param y the second input
      */
-    public LogicOp(int opcode, Value x, Value y, Graph graph) {
-        super(x.kind, opcode, x, y, INPUT_COUNT, SUCCESSOR_COUNT, graph);
-    }
-
-    // for copying
-    private LogicOp(CiKind kind, int opcode, Graph graph) {
-        super(kind, opcode, null, null, INPUT_COUNT, SUCCESSOR_COUNT, graph);
+    public Compare(int opcode, CiKind kind, Value x, Value y, Graph graph) {
+        super(kind, opcode, x, y, INPUT_COUNT, SUCCESSOR_COUNT, graph);
     }
 
     @Override
     public void accept(ValueVisitor v) {
-        v.visitLogicOp(this);
+        v.visitCompare(this);
     }
 
     @Override
     public void print(LogStream out) {
-        out.print(x()).print(' ').print(Bytecodes.operator(opcode)).print(' ').print(y());
+        out.print(x()).
+            print(' ').
+            print(Bytecodes.operator(opcode)).
+            print(' ').
+            print(y());
     }
 
     @Override
     public Node copy(Graph into) {
-        LogicOp x = new LogicOp(kind, opcode, into);
-        x.setNonNull(isNonNull());
+        Compare x = new Compare(opcode, kind, null, null, into);
         return x;
     }
 }

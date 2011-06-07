@@ -23,59 +23,31 @@
 package com.sun.c1x.ir;
 
 import com.oracle.graal.graph.*;
-import com.sun.c1x.debug.*;
+import com.sun.cri.bytecode.*;
+import com.sun.cri.ci.*;
 
-
-public class LoopEnd extends Merge {
-
-    private static final int INPUT_COUNT = 1;
-    private static final int INPUT_LOOP_BEGIN = 0;
-
-    private static final int SUCCESSOR_COUNT = 0;
-
-    @Override
-    protected int inputCount() {
-        return super.inputCount() + INPUT_COUNT;
-    }
-
-    @Override
-    protected int successorCount() {
-        return super.successorCount() + SUCCESSOR_COUNT;
-    }
+public final class Xor extends Logic {
 
     /**
-     * The instruction which produces the input value to this instruction.
+     * @param opcode
+     * @param kind
+     * @param x
+     * @param y
+     * @param graph
      */
-     public LoopBegin loopBegin() {
-        return (LoopBegin) inputs().get(super.inputCount() + INPUT_LOOP_BEGIN);
-    }
-
-    public LoopBegin setLoopBegin(LoopBegin n) {
-        return (LoopBegin) inputs().set(super.inputCount() + INPUT_LOOP_BEGIN, n);
-    }
-
-    public LoopEnd(Graph graph) {
-        super(INPUT_COUNT, SUCCESSOR_COUNT, graph);
-    }
-
-    @Override
-    public void accept(ValueVisitor v) {
-        v.visitLoopEnd(this);
-    }
-
-    @Override
-    public void print(LogStream out) {
-        out.print("loopEnd ").print(loopBegin());
+    public Xor(CiKind kind, Value x, Value y, Graph graph) {
+        super(kind, kind == CiKind.Int ? Bytecodes.IXOR : Bytecodes.LXOR, x, y, graph);
     }
 
     @Override
     public String shortName() {
-        return "LoopEnd";
+        return "^";
     }
 
     @Override
     public Node copy(Graph into) {
-        LoopEnd x = new LoopEnd(into);
+        Xor x = new Xor(kind, null, null, graph());
         return x;
     }
+
 }
