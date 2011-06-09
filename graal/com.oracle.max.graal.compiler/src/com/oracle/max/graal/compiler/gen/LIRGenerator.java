@@ -397,6 +397,9 @@ public abstract class LIRGenerator extends ValueVisitor {
 
         DeoptimizationStub stub = new DeoptimizationStub(state);
         deoptimizationStubs.add(stub);
+
+        emitCompare(x.node());
+        //emitBranch(x.node(), stub.label)
         throw new RuntimeException();
         //lir.branch(x.condition.negate(), stub.label, stub.info);
     }
@@ -681,10 +684,14 @@ public abstract class LIRGenerator extends ValueVisitor {
     }
 
     @Override
-    public void visitNullCheck(FixedNullCheck x) {
-        CiValue value = load(x.object());
-        LIRDebugInfo info = stateFor(x);
-        lir.nullCheck(value, info);
+    public void visitFixedGuard(FixedGuard fixedGuard) {
+        Node comp = fixedGuard.node();
+        if (comp instanceof IsNonNull) {
+            IsNonNull x = (IsNonNull) comp;
+            CiValue value = load(x.object());
+            LIRDebugInfo info = stateFor(x);
+            lir.nullCheck(value, info);
+        }
     }
 
     @Override
