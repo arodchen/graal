@@ -22,16 +22,20 @@
  */
 package com.oracle.max.graal.compiler.ir;
 
-import com.oracle.max.graal.compiler.debug.*;
-import com.oracle.max.graal.graph.*;
+import java.util.*;
 
-public class LoopBegin extends Merge {
+import com.oracle.max.graal.compiler.debug.*;
+import com.oracle.max.graal.compiler.util.*;
+import com.oracle.max.graal.graph.*;
+import com.sun.cri.ci.*;
+
+public class LoopBegin extends StateSplit implements PhiPoint{
 
     private static final int INPUT_COUNT = 0;
     private static final int SUCCESSOR_COUNT = 0;
 
     public LoopBegin(Graph graph) {
-        super(INPUT_COUNT, SUCCESSOR_COUNT, graph);
+        super(CiKind.Illegal, INPUT_COUNT, SUCCESSOR_COUNT, graph);
     }
 
     public LoopEnd loopEnd() {
@@ -66,5 +70,45 @@ public class LoopBegin extends Merge {
     public Node copy(Graph into) {
         LoopBegin x = new LoopBegin(into);
         return x;
+    }
+
+    @Override
+    public int phiPointPredecessorCount() {
+        return 2;
+    }
+
+    @Override
+    public int phiPointPredecessorIndex(Node pred) {
+        Node singlePredecessor = this.singlePredecessor();
+        if (pred == singlePredecessor) {
+            return 0;
+        } else if (pred == this.loopEnd()) {
+            return 1;
+        } else if (singlePredecessor instanceof Placeholder) {
+            singlePredecessor = singlePredecessor.singlePredecessor();
+            if (pred == singlePredecessor) {
+                return 0;
+            }
+        }
+        throw Util.shouldNotReachHere("unknown pred : " + pred + "(sp=" + singlePredecessor + ", le=" + this.loopEnd() + ")");
+    }
+
+    @Override
+    public Node asNode() {
+        return this;
+    }
+
+    @Override
+    public Collection<Phi> phis() {
+        return Util.filter(this.usages(), Phi.class);
+    }
+
+    public Collection<LoopCounter> counters() {
+        return Util.filter(this.usages(), LoopCounter.class);
+    }
+
+    @Override
+    public List<Node> phiPointPredecessors() {
+        return Arrays.asList(new Node[]{this.singlePredecessor(), this.loopEnd()});
     }
 }

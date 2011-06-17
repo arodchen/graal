@@ -79,40 +79,36 @@ public class IR {
             new GraphBuilderPhase(compilation, compilation.method, false, false).apply(compilation.graph);
 //        }
 
-        //printGraph("After GraphBuilding", compilation.graph);
-
         if (GraalOptions.TestGraphDuplication) {
             new DuplicationPhase().apply(compilation.graph);
-            //printGraph("After Duplication", compilation.graph);
         }
 
         new DeadCodeEliminationPhase().apply(compilation.graph);
-        //printGraph("After DeadCodeElimination", compilation.graph);
 
         if (GraalOptions.Inline) {
             new InliningPhase(compilation, this, GraalOptions.TraceInlining).apply(compilation.graph);
-            //printGraph("After Ininling", compilation.graph);
-        }
-
-        if (GraalOptions.Time) {
-            GraalTimers.COMPUTE_LINEAR_SCAN_ORDER.start();
         }
 
         Graph graph = compilation.graph;
 
         if (GraalOptions.OptCanonicalizer) {
             new CanonicalizerPhase().apply(graph);
-            new DeadCodeEliminationPhase().apply(compilation.graph);
-            //printGraph("After Canonicalization", graph);
+            new DeadCodeEliminationPhase().apply(graph);
         }
 
-        new LoopPhase().apply(graph);
+        new LoopEdgeSplitingPhase().apply(graph);
+        if (GraalOptions.OptLoops) {
+            new LoopPhase().apply(graph);
+        }
 
         new LoweringPhase().apply(graph);
 
         IdentifyBlocksPhase schedule = new IdentifyBlocksPhase(true);
         schedule.apply(graph);
 
+        if (GraalOptions.Time) {
+            GraalTimers.COMPUTE_LINEAR_SCAN_ORDER.start();
+        }
 
         List<Block> blocks = schedule.getBlocks();
         List<LIRBlock> lirBlocks = new ArrayList<LIRBlock>();

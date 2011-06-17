@@ -54,17 +54,22 @@ public final class Phi extends FloatingNode {
     /**
      * The merge node for this phi.
      */
-    public Merge merge() {
-        return (Merge) inputs().get(super.inputCount() + INPUT_MERGE);
+    public PhiPoint merge() {
+        return (PhiPoint) inputs().get(super.inputCount() + INPUT_MERGE);
     }
 
-    public void setMerge(Value n) {
+    public void setMerge(Node n) {
+        assert n instanceof PhiPoint;
         inputs().set(super.inputCount() + INPUT_MERGE, n);
     }
 
-    public Phi(CiKind kind, Merge merge, Graph graph) {
+    public Phi(CiKind kind, PhiPoint merge, Graph graph) {
         super(kind, INPUT_COUNT, SUCCESSOR_COUNT, graph);
-        setMerge(merge);
+        setMerge(merge.asNode());
+    }
+
+    Phi(CiKind kind, Graph graph) {
+        super(kind, INPUT_COUNT, SUCCESSOR_COUNT, graph);
     }
 
     /**
@@ -139,7 +144,7 @@ public final class Phi extends FloatingNode {
 
     @Override
     public Node copy(Graph into) {
-        Phi x = new Phi(kind, null, into);
+        Phi x = new Phi(kind, into);
         x.isDead = isDead;
         return x;
     }
