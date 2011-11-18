@@ -887,6 +887,8 @@ JNIEXPORT jobject JNICALL Java_com_oracle_graal_hotspot_VMEntries_getConfigurati
   set_int(env, config, "klassOopOffset", java_lang_Class::klass_offset_in_bytes());
   set_boolean(env, config, "isPollingPageFar", Assembler::is_polling_page_far());
 
+  set_int(env, config, "nmethodEntryOffset", nmethod::verified_entry_point_offset());
+
   BarrierSet* bs = Universe::heap()->barrier_set();
   switch (bs->kind()) {
     case BarrierSet::CardTableModRef:
@@ -922,8 +924,8 @@ JNIEXPORT jobject JNICALL Java_com_oracle_graal_hotspot_VMEntries_getConfigurati
   return config;
 }
 
-// public long installMethod(HotSpotTargetMethod targetMethod, boolean installCode);
-JNIEXPORT jlong JNICALL Java_com_oracle_graal_hotspot_VMEntries_installMethod(JNIEnv *jniEnv, jobject, jobject targetMethod, jboolean install_code) {
+// public HotSpotCompiledMethod installMethod(HotSpotTargetMethod targetMethod, boolean installCode);
+JNIEXPORT jobject JNICALL Java_com_oracle_graal_hotspot_VMEntries_installMethod(JNIEnv *jniEnv, jobject, jobject targetMethod, jboolean install_code) {
   VM_ENTRY_MARK;
   nmethod* nm = NULL;
   ciEnv* current_env = JavaThread::current()->env();
@@ -933,7 +935,19 @@ JNIEXPORT jlong JNICALL Java_com_oracle_graal_hotspot_VMEntries_installMethod(JN
   ResourceMark rm;
   CodeInstaller installer(JNIHandles::resolve(targetMethod), nm, install_code != 0);
   JavaThread::current()->set_env(current_env);
-  return (jlong) nm;
+
+  // if install_code is true then we installed the code into the given method, no need to return an RiCompiledMethod
+  if (!install_code && nm != NULL) {
+    instanceKlass::cast(HotSpotCompiledMethod::klass())->initialize(CHECK_NULL);
+    Handle obj = instanceKlass::cast(HotSpotCompiledMethod::klass())->allocate_permanent_instance(CHECK_NULL);
+    assert(obj() != NULL, "must succeed in allocating instance");
+    HotSpotCompiledMethod::set_nmethod(obj, (jlong) nm);
+    HotSpotCompiledMethod::set_method(obj, HotSpotTargetMethod::method(targetMethod));
+    nm->set_graal_compiled_method(obj());
+    return JNIHandles::make_local(obj());
+  } else {
+    return NULL;
+  }
 }
 
 // public HotSpotProxy installStub(HotSpotTargetMethod targetMethod, String name);
@@ -986,6 +1000,7 @@ JNIEXPORT void JNICALL Java_com_oracle_graal_hotspot_VMEntries_notifyJavaQueue(J
 #define TARGET_METHOD   "Lcom/oracle/max/graal/hotspot/HotSpotTargetMethod;"
 #define CONFIG          "Lcom/oracle/max/graal/hotspot/HotSpotVMConfig;"
 #define HS_METHOD       "Lcom/oracle/max/graal/hotspot/HotSpotMethod;"
+#define HS_COMP_METHOD  "Lcom/oracle/max/graal/hotspot/HotSpotCompiledMethod;"
 #define CI_CONSTANT     "Lcom/sun/cri/ci/CiConstant;"
 #define CI_KIND         "Lcom/sun/cri/ci/CiKind;"
 #define CI_RUNTIME_CALL "Lcom/sun/cri/ci/CiRuntimeCall;"
@@ -1024,7 +1039,7 @@ JNINativeMethod VMEntries_methods[] = {
   {CC"getMaxCallTargetOffset",            CC"("CI_RUNTIME_CALL")J",                   FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_getMaxCallTargetOffset)},
   {CC"getType",                           CC"("CLASS")"TYPE,                          FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_getType)},
   {CC"getConfiguration",                  CC"()"CONFIG,                               FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_getConfiguration)},
-  {CC"installMethod",                     CC"("TARGET_METHOD"Z)J",                    FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_installMethod)},
+  {CC"installMethod",                     CC"("TARGET_METHOD"Z)"HS_COMP_METHOD,       FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_installMethod)},
   {CC"installStub",                       CC"("TARGET_METHOD")"PROXY,                 FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_installStub)},
   {CC"recordBailout",                     CC"("STRING")V",                            FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_recordBailout)},
   {CC"notifyJavaQueue",                   CC"()V",                                    FN_PTR(Java_com_oracle_graal_hotspot_VMEntries_notifyJavaQueue)}
