@@ -20,16 +20,35 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
- 
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.cri");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.criutils");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.asm");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.graal.graph");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.graal.nodes");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.graal.compiler");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.graal.java");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.graal.printer");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.graal.snippets");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.base");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.asmdis");
-    prepend_to_graal_classpath(scp_compiler, graal_dir, "com.oracle.max.graal.hotspot");
+package com.oracle.max.graal.debug.internal;
+
+public class DebugValue {
+
+    private String name;
+    private int index;
+
+    protected DebugValue(String name) {
+        this.name = name;
+        this.index = -1;
+    }
+
+    protected long getCurrentValue() {
+        ensureInitialized();
+        return DebugScope.getInstance().getCurrentValue(index);
+    }
+
+    protected void setCurrentValue(long l) {
+        ensureInitialized();
+        DebugScope.getInstance().setCurrentValue(index, l);
+    }
+
+    private void ensureInitialized() {
+        if (index == -1) {
+            index = KeyRegistry.register(name);
+        }
+    }
+
+    protected void addToCurrentValue(long timeSpan) {
+        setCurrentValue(getCurrentValue() + timeSpan);
+    }
+}
