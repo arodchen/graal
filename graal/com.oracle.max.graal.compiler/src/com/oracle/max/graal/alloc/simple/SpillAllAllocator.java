@@ -39,16 +39,15 @@ import com.oracle.max.graal.compiler.lir.LIRInstruction.ValueProcedure;
 import com.oracle.max.graal.compiler.lir.LIRPhiMapping.PhiValueProcedure;
 import com.oracle.max.graal.compiler.schedule.*;
 import com.oracle.max.graal.compiler.util.*;
+import com.oracle.max.graal.debug.*;
 
 public class SpillAllAllocator {
-    private final GraalContext context;
     private final LIR lir;
     private final FrameMap frameMap;
 
     private final DataFlowAnalysis dataFlow;
 
-    public SpillAllAllocator(GraalContext context, LIR lir, FrameMap frameMap) {
-        this.context = context;
+    public SpillAllAllocator(LIR lir, FrameMap frameMap) {
         this.lir = lir;
         this.frameMap = frameMap;
 
@@ -144,13 +143,17 @@ public class SpillAllAllocator {
         resolveDataFlow.execute();
         frameMap.finish();
 
+
+        ResolveDataFlow resolveDataFlow = new ResolveDataFlowImpl(lir, moveResolver);
+        resolveDataFlow.execute();
+
         IntervalPrinter.printAfterAllocation("After resolve data flow", context, lir, frameMap.registerConfig, dataFlow, blockLocations);
         assert RegisterVerifier.verify(lir, frameMap);
 
         AssignRegisters assignRegisters = new AssignRegistersImpl(lir, frameMap);
         assignRegisters.execute();
 
-        context.observable.fireCompilationEvent("After register asignment", lir);
+        Debug.dump(lir, "After register asignment");
         assert LIRVerifier.verify(false, lir, frameMap);
     }
 
