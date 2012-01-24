@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -20,42 +20,21 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package com.oracle.max.graal.compiler.phases;
+package com.oracle.max.graal.debug.internal;
 
 import com.oracle.max.graal.debug.*;
-import com.oracle.max.graal.nodes.*;
 
-public abstract class Phase {
+public final class MetricImpl extends DebugValue implements DebugMetric {
 
-    private String name;
-
-    protected Phase() {
-        this.name = this.getClass().getSimpleName();
-        if (name.endsWith("Phase")) {
-            name = name.substring(0, name.length() - "Phase".length());
-        }
+    public MetricImpl(String name) {
+        super(name);
     }
 
-    protected Phase(String name) {
-        this.name = name;
+    public void increment() {
+        add(1);
     }
 
-    protected String getDetailedName() {
-        return getName();
+    public void add(int value) {
+        super.addToCurrentValue(value);
     }
-
-    public final void apply(final StructuredGraph graph) {
-        Debug.scope(name, this, new Runnable() {
-            public void run() {
-                Phase.this.run(graph);
-                Debug.dump(graph, "After phase %s", name);
-            }
-        });
-    }
-
-    public final String getName() {
-        return name;
-    }
-
-    protected abstract void run(StructuredGraph graph);
 }

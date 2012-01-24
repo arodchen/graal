@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -20,42 +20,35 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package com.oracle.max.graal.compiler.phases;
+package com.oracle.max.graal.debug.internal;
 
-import com.oracle.max.graal.debug.*;
-import com.oracle.max.graal.nodes.*;
-
-public abstract class Phase {
+public class DebugValue {
 
     private String name;
+    private int index;
 
-    protected Phase() {
-        this.name = this.getClass().getSimpleName();
-        if (name.endsWith("Phase")) {
-            name = name.substring(0, name.length() - "Phase".length());
+    protected DebugValue(String name) {
+        this.name = name;
+        this.index = -1;
+    }
+
+    protected long getCurrentValue() {
+        ensureInitialized();
+        return DebugScope.getInstance().getCurrentValue(index);
+    }
+
+    protected void setCurrentValue(long l) {
+        ensureInitialized();
+        DebugScope.getInstance().setCurrentValue(index, l);
+    }
+
+    private void ensureInitialized() {
+        if (index == -1) {
+            index = KeyRegistry.register(name);
         }
     }
 
-    protected Phase(String name) {
-        this.name = name;
+    protected void addToCurrentValue(long timeSpan) {
+        setCurrentValue(getCurrentValue() + timeSpan);
     }
-
-    protected String getDetailedName() {
-        return getName();
-    }
-
-    public final void apply(final StructuredGraph graph) {
-        Debug.scope(name, this, new Runnable() {
-            public void run() {
-                Phase.this.run(graph);
-                Debug.dump(graph, "After phase %s", name);
-            }
-        });
-    }
-
-    public final String getName() {
-        return name;
-    }
-
-    protected abstract void run(StructuredGraph graph);
 }
