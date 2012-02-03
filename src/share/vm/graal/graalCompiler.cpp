@@ -273,7 +273,27 @@ Handle GraalCompiler::createHotSpotMethodResolved(methodHandle method, TRAPS) {
   HotSpotMethodResolved::set_canBeInlined(obj, true);
   
   method->set_graal_mirror(obj());
-  return obj();
+  return obj;
+}
+
+Handle GraalCompiler::createHotSpotMethodData(methodDataHandle method_data, TRAPS) {
+  if(method_data->graal_mirror() != NULL) {
+    assert(method_data->graal_mirror()->is_a(HotSpotMethodData::klass()), "unexpected class");
+    return method_data->graal_mirror();
+  }
+
+  instanceKlass::cast(HotSpotMethodData::klass())->initialize(CHECK_NULL);
+  Handle obj = instanceKlass::cast(HotSpotMethodData::klass())->allocate_instance(CHECK_NULL);
+  assert(obj.not_null(), "must succeed in allocating instance");
+  
+  HotSpotMethodData::set_compiler(obj, VMToCompiler::compilerInstance()());
+  HotSpotMethodData::set_hotspotMirror(obj, method_data());
+  HotSpotMethodData::set_normalDataSize(obj, method_data()->data_size());
+  HotSpotMethodData::set_extraDataSize(obj, method_data()->extra_data_size());
+  HotSpotMethodData::set_mature(obj, method_data()->is_mature());
+
+  method_data->set_graal_mirror(obj());
+  return obj;
 }
 
 BasicType GraalCompiler::kindToBasicType(jchar ch) {
