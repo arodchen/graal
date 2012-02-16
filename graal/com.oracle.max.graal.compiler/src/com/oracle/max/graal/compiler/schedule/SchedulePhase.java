@@ -24,7 +24,6 @@ package com.oracle.max.graal.compiler.schedule;
 
 import java.util.*;
 
-import com.oracle.max.cri.ci.*;
 import com.oracle.max.criutils.*;
 import com.oracle.max.graal.compiler.*;
 import com.oracle.max.graal.compiler.phases.*;
@@ -102,6 +101,7 @@ public class SchedulePhase extends Phase {
         } else if (GraalOptions.ScheduleOutOfLoops && !(n instanceof VirtualObjectFieldNode) && !(n instanceof VirtualObjectNode)) {
             Block earliestBlock = earliestBlock(n);
             block = scheduleOutOfLoops(n, latestBlock, earliestBlock);
+            assert earliestBlock.dominates(block) : "Graph can not be scheduled : inconsisitant for " + n;
         } else {
             block = latestBlock;
         }
@@ -204,10 +204,11 @@ public class SchedulePhase extends Phase {
                         TTY.println(merge.toString());
                         TTY.println(phi.toString());
                         TTY.println(merge.cfgPredecessors().toString());
+                        TTY.println(mergeBlock.getPredecessors().toString());
                         TTY.println(phi.inputs().toString());
                         TTY.println("value count: " + phi.valueCount());
                     }
-                closure.apply(mergeBlock.getPredecessors().get(i));
+                    closure.apply(mergeBlock.getPredecessors().get(i));
                 }
             }
         } else if (usage instanceof FrameState && ((FrameState) usage).block() != null) {
@@ -274,7 +275,7 @@ public class SchedulePhase extends Phase {
                 // scheduler is used for debug printing in early compiler phases. This was annoying during debugging
                 // when an excpetion breakpoint is set for assertion errors, so I changed it to a bailout.
                 if (b.getEndNode() instanceof ControlSplitNode) {
-                    throw new CiBailout("");
+                    throw new GraalInternalError("Schedule is not possible : needs to move a node after the last node of the block whcih can not be move");
                 }
                 //assert !(b.lastNode() instanceof ControlSplitNode);
 

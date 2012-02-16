@@ -289,4 +289,45 @@ public class StructuredGraph extends Graph {
         newNode.setNext(node);
     }
 
+    public void reduceDegenerateLoopBegin(LoopBeginNode begin) {
+        assert begin.loopEnds().isEmpty() : "Loop begin still has backedges";
+        if (begin.forwardEndCount() == 1) { // bypass merge and remove
+            reduceTrivialMerge(begin);
+        } else { // convert to merge
+            MergeNode merge = this.add(new MergeNode());
+            this.replaceFixedWithFixed(begin, merge);
+        }
+    }
+
+    public void reduceTrivialMerge(MergeNode merge) {
+        assert merge.forwardEndCount() == 1;
+        assert !(merge instanceof LoopBeginNode) || ((LoopBeginNode) merge).loopEnds().isEmpty();
+        for (PhiNode phi : merge.phis().snapshot()) {
+            assert phi.valueCount() == 1;
+            ValueNode singleValue = phi.valueAt(0);
+            phi.replaceAtUsages(singleValue);
+            phi.safeDelete();
+        }
+        EndNode singleEnd = merge.forwardEndAt(0);
+        FixedNode sux = merge.next();
+        FrameState stateAfter = merge.stateAfter();
+        // evacuateGuards
+        Node prevBegin = singleEnd.predecessor();
+        assert prevBegin != null;
+        while (!(prevBegin instanceof BeginNode)) {
+            prevBegin = prevBegin.predecessor();
+        }
+        merge.replaceAtUsages(prevBegin);
+
+        merge.safeDelete();
+        if (stateAfter != null && stateAfter.usages().isEmpty()) {
+            stateAfter.safeDelete();
+        }
+        if (sux == null) {
+            singleEnd.replaceAtPredecessors(null);
+            singleEnd.safeDelete();
+        } else {
+            singleEnd.replaceAndDelete(sux);
+        }
+    }
 }
