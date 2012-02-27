@@ -280,9 +280,11 @@ int DebugInformationRecorder::find_sharable_decode_offset(int stream_offset) {
 // must call add_safepoint before: it sets PcDesc and this routine uses
 // the last PcDesc set
 void DebugInformationRecorder::describe_scope(int         pc_offset,
+                                              methodHandle methodH,
                                               ciMethod*   method,
                                               int         bci,
                                               bool        reexecute,
+                                              bool        rethrow_exception,
                                               bool        is_method_handle_invoke,
                                               bool        return_oop,
                                               DebugToken* locals,
@@ -298,6 +300,7 @@ void DebugInformationRecorder::describe_scope(int         pc_offset,
 
   // Record flags into pcDesc.
   last_pd->set_should_reexecute(reexecute);
+  last_pd->set_rethrow_exception(rethrow_exception);
   last_pd->set_is_method_handle_invoke(is_method_handle_invoke);
   last_pd->set_return_oop(return_oop);
 
@@ -305,12 +308,23 @@ void DebugInformationRecorder::describe_scope(int         pc_offset,
   stream()->write_int(sender_stream_offset);
 
   // serialize scope
-  jobject method_enc = (method == NULL)? NULL: method->constant_encoding();
+  jobject method_enc;
+  if (method != NULL) {
+    method_enc = method->constant_encoding();
+  } else if (methodH.not_null()) {
+    method_enc = JNIHandles::make_local(Thread::current(), methodH());
+  } else {
+    method_enc = NULL;
+  }
   stream()->write_int(oop_recorder()->find_index(method_enc));
   stream()->write_bci(bci);
   assert(method == NULL ||
          (method->is_native() && bci == 0) ||
          (!method->is_native() && 0 <= bci && bci < method->code_size()) ||
+         bci == -1, "illegal bci");
+  assert(methodH.is_null() ||
+         (methodH->is_native() && bci == 0) ||
+         (!methodH->is_native() && 0 <= bci && bci < methodH->code_size()) ||
          bci == -1, "illegal bci");
 
   // serialize the locals/expressions/monitors

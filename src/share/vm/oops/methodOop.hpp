@@ -131,6 +131,8 @@ class methodOopDesc : public oopDesc {
   InvocationCounter _invocation_counter;         // Incremented before each activation of the method - used to trigger frequency-based optimizations
   InvocationCounter _backedge_counter;           // Incremented before each backedge taken - used to trigger frequencey-based optimizations
 
+  // com/oracle/max/graal/hotspot/HotSpotMethodResolved mirroring this method
+  oop               _graal_mirror;
 #ifdef TIERED
   jlong             _prev_time;                   // Previous time the rate was acquired
   float             _rate;                        // Events (invocation and backedge counter increments) per millisecond
@@ -330,6 +332,10 @@ class methodOopDesc : public oopDesc {
 
   int invocation_count();
   int backedge_count();
+
+  // graal mirror
+  oop graal_mirror() const               { return _graal_mirror; }
+  void set_graal_mirror(oop m)           { oop_store((oop*) &_graal_mirror, m); }
 
   bool was_executed_more_than(int n);
   bool was_never_executed()                      { return !was_executed_more_than(0); }
@@ -724,6 +730,7 @@ class methodOopDesc : public oopDesc {
   // Garbage collection support
   oop*  adr_constMethod() const                  { return (oop*)&_constMethod;     }
   oop*  adr_constants() const                    { return (oop*)&_constants;       }
+  oop*  adr_graal_mirror() const                 { return (oop*)&_graal_mirror;    }
   oop*  adr_method_data() const                  { return (oop*)&_method_data;     }
 };
 

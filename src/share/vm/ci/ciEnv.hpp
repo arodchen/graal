@@ -105,6 +105,8 @@ private:
   ciInstance* _the_null_string;      // The Java string "null"
   ciInstance* _the_min_jint_string; // The Java string "-2147483648"
 
+public:
+
   // Look up a klass by name from a particular class loader (the accessor's).
   // If require_local, result must be defined in that class loader, or NULL.
   // If !require_local, a result from remote class loader may be reported,
@@ -134,6 +136,8 @@ private:
   ciMethod*  get_method_by_index(constantPoolHandle cpool,
                                  int method_index, Bytecodes::Code bc,
                                  ciInstanceKlass* loading_klass);
+
+private:
 
   // Implementation methods for loading and constant pool access.
   ciKlass* get_klass_by_name_impl(ciKlass* accessing_klass,
@@ -165,6 +169,7 @@ private:
                            Symbol*         sig,
                            Bytecodes::Code bc);
 
+  public:
   // Get a ciObject from the object factory.  Ensures uniqueness
   // of ciObjects.
   ciObject* get_object(oop o) {
@@ -174,6 +179,7 @@ private:
       return _factory->get(o);
     }
   }
+  private:
 
   ciSymbol* get_symbol(Symbol* o) {
     if (o == NULL) {
@@ -322,7 +328,7 @@ public:
   uint compile_id();  // task()->compile_id()
 
   // Register the result of a compilation.
-  void register_method(ciMethod*                 target,
+  nmethod* register_method(ciMethod*             target,
                        int                       entry_bci,
                        CodeOffsets*              offsets,
                        int                       orig_pc_offset,
@@ -393,10 +399,10 @@ public:
   Arena*    arena() { return _arena; }
 
   // What is the current compilation environment?
-  static ciEnv* current() { return CompilerThread::current()->env(); }
+  static ciEnv* current() { return JavaThread::current()->env(); }
 
   // Overload with current thread argument
-  static ciEnv* current(CompilerThread *thread) { return thread->env(); }
+  static ciEnv* current(JavaThread *thread) { return thread->env(); }
 
   // Per-compiler data.  (Used by C2 to publish the Compile* pointer.)
   void* compiler_data() { return _compiler_data; }

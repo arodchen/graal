@@ -228,6 +228,11 @@ class Arguments : AllStatic {
   // an array containing all jvm arguments specified in the command line
   static char** _jvm_args_array;
   static int    _num_jvm_args;
+#ifdef GRAAL
+  // an array containing all graal arguments specified in the command line
+  static char** _graal_args_array;
+  static int    _num_graal_args;
+#endif
   // string containing all java command (class/jarfile name and app args)
   static char* _java_command;
 
@@ -242,6 +247,9 @@ class Arguments : AllStatic {
   static SystemProperty *_java_home;
   static SystemProperty *_java_class_path;
   static SystemProperty *_sun_boot_class_path;
+#ifdef GRAAL
+  static SystemProperty *_compiler_class_path;
+#endif
 
   // Meta-index for knowing what packages are in the boot class path
   static char* _meta_index_path;
@@ -366,6 +374,9 @@ class Arguments : AllStatic {
   // methods to build strings from individual args
   static void build_jvm_args(const char* arg);
   static void build_jvm_flags(const char* arg);
+#ifdef GRAAL
+  static void add_graal_arg(const char* arg);
+#endif
   static void add_string(char*** bldarray, int* count, const char* arg);
   static const char* build_resource_string(char** args, int count);
 
@@ -421,6 +432,10 @@ class Arguments : AllStatic {
   // return a char* array containing all options
   static char** jvm_flags_array()          { return _jvm_flags_array; }
   static char** jvm_args_array()           { return _jvm_args_array; }
+#ifdef GRAAL
+  static char** graal_args_array()           { return _graal_args_array; }
+  static int num_graal_args()               { return _num_graal_args; }
+#endif
   static int num_jvm_flags()               { return _num_jvm_flags; }
   static int num_jvm_args()                { return _num_jvm_args; }
   // return the arguments passed to the Java application
@@ -519,6 +534,9 @@ class Arguments : AllStatic {
   static void set_ext_dirs(char *value) { _java_ext_dirs->set_value(value); }
   static void set_endorsed_dirs(char *value) { _java_endorsed_dirs->set_value(value); }
   static void set_sysclasspath(char *value) { _sun_boot_class_path->set_value(value); }
+#ifdef GRAAL
+  static void set_compilerclasspath(char *value) { _compiler_class_path->set_value(value); }
+#endif
   static void append_sysclasspath(const char *value) { _sun_boot_class_path->append_value(value); }
   static void set_meta_index_path(char* meta_index_path, char* meta_index_dir) {
     _meta_index_path = meta_index_path;
@@ -529,6 +547,9 @@ class Arguments : AllStatic {
   static char *get_dll_dir() { return _sun_boot_library_path->value(); }
   static char *get_endorsed_dir() { return _java_endorsed_dirs->value(); }
   static char *get_sysclasspath() { return _sun_boot_class_path->value(); }
+#ifdef GRAAL
+  static char *get_compilerclasspath() { return _compiler_class_path->value(); }
+#endif
   static char* get_meta_index_path() { return _meta_index_path; }
   static char* get_meta_index_dir()  { return _meta_index_dir;  }
 

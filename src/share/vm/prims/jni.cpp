@@ -29,6 +29,9 @@
 #include "classfile/systemDictionary.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "interpreter/linkResolver.hpp"
+#ifdef GRAAL
+#include "graal/graalCompiler.hpp"
+#endif
 #ifndef SERIALGC
 #include "gc_implementation/g1/g1SATBCardTableModRefBS.hpp"
 #endif // SERIALGC
@@ -5134,6 +5137,12 @@ _JNI_IMPORT_OR_EXPORT_ jint JNICALL JNI_CreateJavaVM(JavaVM **vm, void **penv, v
     /* thread is thread_in_vm here */
     *vm = (JavaVM *)(&main_vm);
     *(JNIEnv**)penv = thread->jni_environment();
+
+#ifdef GRAAL
+      GraalCompiler* compiler = GraalCompiler::instance();
+      ciObjectFactory::initialize(); 
+      compiler->initialize();
+#endif
 
     // Tracks the time application was running before GC
     RuntimeService::record_application_start();

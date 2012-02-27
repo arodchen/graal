@@ -126,6 +126,7 @@ class RegisterSaver {
   static int rax_offset_in_bytes(void)    { return BytesPerInt * rax_off; }
   static int rdx_offset_in_bytes(void)    { return BytesPerInt * rdx_off; }
   static int rbx_offset_in_bytes(void)    { return BytesPerInt * rbx_off; }
+  static int r10_offset_in_bytes(void)    { return BytesPerInt * r10_off; }
   static int xmm0_offset_in_bytes(void)   { return BytesPerInt * xmm0_off; }
   static int return_offset_in_bytes(void) { return BytesPerInt * return_off; }
 
@@ -2973,7 +2974,7 @@ void SharedRuntime::generate_deopt_blob() {
   __ push(0);
 
   // Save everything in sight.
-  map = RegisterSaver::save_live_registers(masm, 0, &frame_size_in_words);
+  RegisterSaver::save_live_registers(masm, 0, &frame_size_in_words);
 
   // Now it is safe to overwrite any register
 
@@ -3001,6 +3002,51 @@ void SharedRuntime::generate_deopt_blob() {
   __ bind(no_pending_exception);
 #endif
 
+  // (tw) Start of graal uncommon trap code.
+  __ jmp(cont);
+
+  int jmp_uncommon_trap_offset = __ pc() - start;
+  __ pushptr(Address(r15_thread, in_bytes(JavaThread::ScratchA_offset())));
+  __ movptr(rscratch1, 2); // InvalidateRecompile
+
+  int uncommon_trap_offset = __ pc() - start;
+
+  // Warning: Duplicate code
+
+  // Save everything in sight.
+  RegisterSaver::save_live_registers(masm, 0, &frame_size_in_words);
+
+  // Normal deoptimization
+
+
+  // fetch_unroll_info needs to call last_java_frame()
+  __ set_last_Java_frame(noreg, noreg, NULL);
+
+
+  //  __ movl(c_rarg1, (int32_t)Deoptimization::Unpack_reexecute);
+  //  __ movl(r14, c_rarg1); // save into r14 for later call to unpack_frames
+
+  assert(r10 == rscratch1, "scratch register should be r10");
+  __ movl(c_rarg1, Address(rsp, RegisterSaver::r10_offset_in_bytes()));
+  __ orq(c_rarg1, ~(int32_t)Deoptimization::make_trap_request(Deoptimization::Reason_unreached, Deoptimization::Action_none));
+  __ notq(c_rarg1);
+  __ movl(r14, (int32_t)Deoptimization::Unpack_reexecute);
+  __ mov(c_rarg0, r15_thread);
+  __ call(RuntimeAddress(CAST_FROM_FN_PTR(address, Deoptimization::uncommon_trap)));
+
+  // Need to have an oopmap that tells fetch_unroll_info where to
+  // find any register it might need.
+
+  oop_maps->add_gc_map( __ pc()-start, map->deep_copy());
+
+  __ reset_last_Java_frame(false, false);
+
+  Label after_fetch_unroll_info_call;
+  __ jmp(after_fetch_unroll_info_call);
+
+
+  // (tw) End of graal uncommon trap code.
+
   __ bind(cont);
 
   // Call C code.  Need thread and this frame, but NOT official VM entry
@@ -3021,6 +3067,7 @@ void SharedRuntime::generate_deopt_blob() {
     __ bind(L);
   }
 #endif // ASSERT
+  
   __ mov(c_rarg0, r15_thread);
   __ call(RuntimeAddress(CAST_FROM_FN_PTR(address, Deoptimization::fetch_unroll_info)));
 
@@ -3029,6 +3076,8 @@ void SharedRuntime::generate_deopt_blob() {
   oop_maps->add_gc_map(__ pc() - start, map);
 
   __ reset_last_Java_frame(false, false);
+
+  __ bind(after_fetch_unroll_info_call);
 
   // Load UnrollBlock* into rdi
   __ mov(rdi, rax);
@@ -3199,6 +3248,8 @@ void SharedRuntime::generate_deopt_blob() {
 
   _deopt_blob = DeoptimizationBlob::create(&buffer, oop_maps, 0, exception_offset, reexecute_offset, frame_size_in_words);
   _deopt_blob->set_unpack_with_exception_in_tls_offset(exception_in_tls_offset);
+  _deopt_blob->set_uncommon_trap_offset(uncommon_trap_offset);
+  _deopt_blob->set_jmp_uncommon_trap_offset(jmp_uncommon_trap_offset);
 }
 
 #ifdef COMPILER2

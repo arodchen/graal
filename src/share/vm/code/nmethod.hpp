@@ -116,6 +116,8 @@ class nmethod : public CodeBlob {
   int       _entry_bci;        // != InvocationEntryBci if this nmethod is an on-stack replacement method
   jmethodID _jmethod_id;       // Cache of method()->jmethod_id()
 
+  oop       _graal_compiled_method;
+
   // To support simple linked-list chaining of nmethods:
   nmethod*  _osr_link;         // from instanceKlass::osr_nmethods_head
   nmethod*  _scavenge_root_link; // from CodeCache::scavenge_root_nmethods
@@ -536,6 +538,10 @@ public:
   // Evolution support. We make old (discarded) compiled methods point to new methodOops.
   void set_method(methodOop method) { _method = method; }
 
+
+  oop graal_compiled_method() { return _graal_compiled_method; }
+  void set_graal_compiled_method(oop compiled_method) { _graal_compiled_method = compiled_method; }
+
   // GC support
   void do_unloading(BoolObjectClosure* is_alive, OopClosure* keep_alive,
                     bool unloading_occurred);
@@ -587,7 +593,10 @@ public:
   // Deopt
   // Return true is the PC is one would expect if the frame is being deopted.
   bool is_deopt_pc      (address pc) { return is_deopt_entry(pc) || is_deopt_mh_entry(pc); }
-  bool is_deopt_entry   (address pc) { return pc == deopt_handler_begin(); }
+
+  // (tw) When using graal, the address might be off by 5 (because this is the size of the call instruction.
+  // (tw) TODO: Replace this by a more general mechanism.
+  bool is_deopt_entry   (address pc) { return pc == deopt_handler_begin() IS_GRAAL( || pc == deopt_handler_begin() + 5); }
   bool is_deopt_mh_entry(address pc) { return pc == deopt_mh_handler_begin(); }
   // Accessor/mutator for the original pc of a frame before a frame was deopted.
   address get_original_pc(const frame* fr) { return *orig_pc_addr(fr); }
@@ -638,7 +647,7 @@ public:
 
   // Prints a comment for one native instruction (reloc info, pc desc)
   void print_code_comment_on(outputStream* st, int column, address begin, address end);
-  static void print_statistics()                  PRODUCT_RETURN;
+  static void print_statistics();
 
   // Compiler task identification.  Note that all OSR methods
   // are numbered in an independent sequence if CICountOSR is true,

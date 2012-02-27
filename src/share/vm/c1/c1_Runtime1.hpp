@@ -70,6 +70,17 @@ class StubAssembler;
   stub(g1_post_barrier_slow)         \
   stub(fpu2long_stub)                \
   stub(counter_overflow)             \
+  stub(graal_unwind_exception_call)  \
+  stub(graal_slow_subtype_check)     \
+  stub(graal_arithmetic_frem)        \
+  stub(graal_arithmetic_drem)        \
+  stub(graal_monitorenter)           \
+  stub(graal_monitorexit)            \
+  stub(graal_verify_pointer)         \
+  stub(graal_set_deopt_info)         \
+  stub(graal_create_null_pointer_exception) \
+  stub(graal_create_out_of_bounds_exception) \
+  stub(graal_generic_callback)       \
   last_entry(number_of_ids)
 
 #define DECLARE_STUB_ID(x)       x ## _id ,
@@ -149,6 +160,9 @@ class Runtime1: public AllStatic {
   static void throw_class_cast_exception(JavaThread* thread, oopDesc* object);
   static void throw_incompatible_class_change_error(JavaThread* thread);
   static void throw_array_store_exception(JavaThread* thread, oopDesc* object);
+
+  static void graal_monitorenter(JavaThread* thread, oopDesc* obj, BasicLock* lock);
+  static void graal_monitorexit (JavaThread* thread, oopDesc* obj, BasicLock* lock);
 
   static void monitorenter(JavaThread* thread, oopDesc* obj, BasicObjectLock* lock);
   static void monitorexit (JavaThread* thread, BasicObjectLock* lock);

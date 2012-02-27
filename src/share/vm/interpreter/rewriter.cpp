@@ -118,7 +118,11 @@ void Rewriter::rewrite_Object_init(methodHandle method, TRAPS) {
   while (!bcs.is_last_bytecode()) {
     Bytecodes::Code opcode = bcs.raw_next();
     switch (opcode) {
-      case Bytecodes::_return: *bcs.bcp() = Bytecodes::_return_register_finalizer; break;
+      case Bytecodes::_return:
+#ifndef GRAAL
+          *bcs.bcp() = Bytecodes::_return_register_finalizer;
+#endif
+        break;
 
       case Bytecodes::_istore:
       case Bytecodes::_lstore:
@@ -273,12 +277,14 @@ void Rewriter::scan_method(methodOop method, bool reverse) {
       switch (c) {
         case Bytecodes::_lookupswitch   : {
 #ifndef CC_INTERP
-          Bytecode_lookupswitch bc(method, bcp);
-          (*bcp) = (
-            bc.number_of_pairs() < BinarySwitchThreshold
-            ? Bytecodes::_fast_linearswitch
-            : Bytecodes::_fast_binaryswitch
-          );
+#ifndef GRAAL
+            Bytecode_lookupswitch bc(method, bcp);
+            (*bcp) = (
+              bc.number_of_pairs() < BinarySwitchThreshold
+              ? Bytecodes::_fast_linearswitch
+              : Bytecodes::_fast_binaryswitch
+            );
+#endif
 #endif
           break;
         }

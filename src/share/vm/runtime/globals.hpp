@@ -674,7 +674,7 @@ class CommandLineFlags {
   develop(bool, TraceCallFixup, false,                                      \
           "traces all call fixups")                                         \
                                                                             \
-  develop(bool, DeoptimizeALot, false,                                      \
+  product(bool, DeoptimizeALot, false,                                      \
           "deoptimize at every exit from the runtime system")               \
                                                                             \
   notproduct(ccstrlist, DeoptimizeOnlyAt, "",                               \
@@ -936,6 +936,9 @@ class CommandLineFlags {
                                                                             \
   diagnostic(ccstr, PrintAssemblyOptions, NULL,                             \
           "Options string passed to disassembler.so")                       \
+                                                                            \
+  product(bool, PrintNMethodStatistics, false,                              \
+          "Print a summary statistic for the generated nmethods")           \
                                                                             \
   diagnostic(bool, PrintNMethods, false,                                    \
           "Print assembly code for nmethods when generated")                \
@@ -1328,7 +1331,7 @@ class CommandLineFlags {
   develop(bool, TraceClassInitialization, false,                            \
           "Trace class initialization")                                     \
                                                                             \
-  develop(bool, TraceExceptions, false,                                     \
+  product(bool, TraceExceptions, false,                                     \
           "Trace exceptions")                                               \
                                                                             \
   develop(bool, TraceICs, false,                                            \
@@ -2988,8 +2991,11 @@ class CommandLineFlags {
           "Distance to prefetch destination array in arracopy")             \
                                                                             \
   /* deoptimization */                                                      \
-  develop(bool, TraceDeoptimization, false,                                 \
+  product(bool, TraceDeoptimization, false,                                 \
           "Trace deoptimization")                                           \
+                                                                            \
+  product(bool, PrintDeoptimizationDetails, false,                          \
+          "Print more information about deoptimization")                    \
                                                                             \
   develop(bool, DebugDeoptimization, false,                                 \
           "Tracing various information while debugging deoptimization")     \
@@ -3142,7 +3148,7 @@ class CommandLineFlags {
           "if non-zero, start verifying C heap after Nth call to "          \
           "malloc/realloc/free")                                            \
                                                                             \
-  product(intx, TypeProfileWidth,     2,                                   \
+  product_pd(intx, TypeProfileWidth,                                        \
           "number of receiver types to record in call/cast profile")        \
                                                                             \
   develop(intx, BciProfileWidth,      2,                                    \
@@ -3823,7 +3829,7 @@ class CommandLineFlags {
           "Skip assert() and verify() which page-in unwanted shared "       \
           "objects. ")                                                      \
                                                                             \
-  diagnostic(bool, EnableInvokeDynamic, true,                               \
+  diagnostic(bool, EnableInvokeDynamic, false,                              \
           "support JSR 292 (method handles, invokedynamic, "                \
           "anonymous classes")                                              \
                                                                             \

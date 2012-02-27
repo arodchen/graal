@@ -88,9 +88,9 @@ ciObjectFactory::ciObjectFactory(Arena* arena,
 
   // If the shared ci objects exist append them to this factory's objects
 
-  if (_shared_ci_objects != NULL) {
+  /*if (_shared_ci_objects != NULL) {
     _ci_objects->appendAll(_shared_ci_objects);
-  }
+  }*/
 
   _unloaded_methods = new (arena) GrowableArray<ciMethod*>(arena, 4, 0, NULL);
   _unloaded_klasses = new (arena) GrowableArray<ciKlass*>(arena, 8, 0, NULL);
@@ -219,13 +219,15 @@ void ciObjectFactory::init_shared_objects() {
 
 
 ciSymbol* ciObjectFactory::get_symbol(Symbol* key) {
-  vmSymbols::SID sid = vmSymbols::find_sid(key);
+  /*vmSymbols::SID sid = vmSymbols::find_sid(key);
   if (sid != vmSymbols::NO_SID) {
     // do not pollute the main cache with it
-    return vm_symbol_at(sid);
-  }
+    ciSymbol* result = vm_symbol_at(sid);
+    assert(result != NULL, "");
+    return result;
+  }*/
 
-  assert(vmSymbols::find_sid(key) == vmSymbols::NO_SID, "");
+  //assert(vmSymbols::find_sid(key) == vmSymbols::NO_SID, "");
   ciSymbol* s = new (arena()) ciSymbol(key, vmSymbols::NO_SID);
   _symbols->push(s);
   return s;

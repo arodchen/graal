@@ -19,7 +19,6 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
  */
 
 #include "precompiled.hpp"
@@ -163,8 +162,10 @@ JRT_BLOCK_ENTRY(Deoptimization::UnrollBlock*, Deoptimization::fetch_unroll_info(
   // handler. Note this fact before we start generating temporary frames
   // that can confuse an asynchronous stack walker. This counter is
   // decremented at the end of unpack_frames().
+  if (TraceDeoptimization) {
+    tty->print("Deoptimization "); 
+  }
   thread->inc_in_deopt_handler();
-
   return fetch_unroll_info_helper(thread);
 JRT_END
 
@@ -208,11 +209,14 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
   assert(vf->is_compiled_frame(), "Wrong frame type");
   chunk->push(compiledVFrame::cast(vf));
 
-#ifdef COMPILER2
+  // TODO(tw): Fix this hack after introducing GRAAL macro.
+#if defined(COMPILER2) || defined(GRAAL)
   // Reallocate the non-escaping objects and restore their fields. Then
   // relock objects if synchronization on them was eliminated.
+#ifdef COMPILER2
   if (DoEscapeAnalysis || EliminateNestedLocks) {
     if (EliminateAllocations) {
+#endif // COMPILER2
       assert (chunk->at(0)->scope() != NULL,"expect only compiled java frames");
       GrowableArray<ScopeValue*>* objects = chunk->at(0)->scope()->objects();
 
@@ -232,7 +236,7 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
         assert(result == NULL || result->is_oop(), "must be oop");
         return_value = Handle(thread, result);
         assert(Universe::heap()->is_in_or_null(result), "must be heap pointer");
-        if (TraceDeoptimization) {
+        if (PrintDeoptimizationDetails) {
           tty->print_cr("SAVED OOP RESULT " INTPTR_FORMAT " in thread " INTPTR_FORMAT, result, thread);
         }
       }
@@ -245,19 +249,21 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
       if (reallocated) {
         reassign_fields(&deoptee, &map, objects);
 #ifndef PRODUCT
-        if (TraceDeoptimization) {
+        if (PrintDeoptimizationDetails) {
           ttyLocker ttyl;
           tty->print_cr("REALLOC OBJECTS in thread " INTPTR_FORMAT, thread);
           print_objects(objects);
         }
-#endif
+#endif // !PRODUCT
       }
       if (save_oop_result) {
         // Restore result.
         deoptee.set_saved_oop_result(&map, return_value());
       }
+#ifdef COMPILER2
     }
     if (EliminateLocks) {
+#endif // COMPILER2
 #ifndef PRODUCT
       bool first = true;
 #endif
@@ -268,7 +274,7 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
         if (monitors->is_nonempty()) {
           relock_objects(monitors, thread);
 #ifndef PRODUCT
-          if (TraceDeoptimization) {
+          if (PrintDeoptimizationDetails) {
             ttyLocker ttyl;
             for (int j = 0; j < monitors->length(); j++) {
               MonitorInfo* mi = monitors->at(j);
@@ -281,12 +287,15 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
               }
             }
           }
-#endif
+#endif // !PRODUCT
         }
       }
+#ifdef COMPILER2
     }
   }
 #endif // COMPILER2
+#endif // COMPILER2 || GRAAL
+
   // Ensure that no safepoint is taken after pointers have been stored
   // in fields of rematerialized objects.  If a safepoint occurs from here on
   // out the java state residing in the vframeArray will be missed.
@@ -492,7 +501,7 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
   info->set_initial_info((intptr_t) array->sender().initial_deoptimization_info());
 
   if (array->frames() > 1) {
-    if (VerifyStack && TraceDeoptimization) {
+    if (PrintDeoptimizationDetails) {
       tty->print_cr("Deoptimizing method containing inlining");
     }
   }
@@ -572,7 +581,7 @@ JRT_LEAF(BasicType, Deoptimization::unpack_frames(JavaThread* thread, int exec_m
   vframeArray* array = thread->vframe_array_head();
 
 #ifndef PRODUCT
-  if (TraceDeoptimization) {
+  if (PrintDeoptimizationDetails) {
     tty->print_cr("DEOPT UNPACKING thread " INTPTR_FORMAT " vframeArray " INTPTR_FORMAT " mode %d", thread, array, exec_mode);
   }
 #endif
@@ -737,7 +746,7 @@ int Deoptimization::deoptimize_dependents() {
 }
 
 
-#ifdef COMPILER2
+//#ifdef COMPILER2
 bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, GrowableArray<ScopeValue*>* objects, TRAPS) {
   Handle pending_exception(thread->pending_exception());
   const char* exception_file = thread->exception_file();
@@ -917,6 +926,9 @@ void Deoptimization::reassign_fields(frame* fr, RegisterMap* reg_map, GrowableAr
     KlassHandle k(((ConstantOopReadValue*) sv->klass())->value()());
     Handle obj = sv->value();
     assert(obj.not_null(), "reallocation was missed");
+    if (PrintDeoptimizationDetails) {
+      tty->print_cr("reassign fields for object of type %s!", k->name()->as_C_string());
+    }
 
     if (k->oop_is_instance()) {
       instanceKlass* ik = instanceKlass::cast(k());
@@ -979,13 +991,13 @@ void Deoptimization::print_objects(GrowableArray<ScopeValue*>* objects) {
   }
 }
 #endif
-#endif // COMPILER2
+//#endif // COMPILER2
 
 vframeArray* Deoptimization::create_vframeArray(JavaThread* thread, frame fr, RegisterMap *reg_map, GrowableArray<compiledVFrame*>* chunk) {
   Events::log(thread, "DEOPT PACKING pc=" INTPTR_FORMAT " sp=" INTPTR_FORMAT, fr.pc(), fr.sp());
 
 #ifndef PRODUCT
-  if (TraceDeoptimization) {
+  if (PrintDeoptimizationDetails) {
     ttyLocker ttyl;
     tty->print("DEOPT PACKING thread " INTPTR_FORMAT " ", thread);
     fr.print_on(tty);
@@ -1030,7 +1042,7 @@ vframeArray* Deoptimization::create_vframeArray(JavaThread* thread, frame fr, Re
   assert(array->structural_compare(thread, chunk), "just checking");
 
 #ifndef PRODUCT
-  if (TraceDeoptimization) {
+  if (PrintDeoptimizationDetails) {
     ttyLocker ttyl;
     tty->print_cr("     Created vframeArray " INTPTR_FORMAT, array);
   }
@@ -1178,7 +1190,6 @@ JRT_LEAF(void, Deoptimization::popframe_preserve_args(JavaThread* thread, int by
 JRT_END
 
 
-#if defined(COMPILER2) || defined(SHARK)
 void Deoptimization::load_class_by_index(constantPoolHandle constant_pool, int index, TRAPS) {
   // in case of an unresolved klass entry, load the class.
   if (constant_pool->tag_at(index).is_unresolved_klass()) {
@@ -1258,10 +1269,38 @@ JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* thread, jint tra
     nmethod* nm = cvf->code();
 
     ScopeDesc*      trap_scope  = cvf->scope();
+    
+    if (TraceDeoptimization) {
+      tty->print_cr("  bci=%d pc=%d, relative_pc=%d, method=%s", trap_scope->bci(), fr.pc(), fr.pc() - nm->code_begin(), trap_scope->method()->name()->as_C_string());
+      if (thread->graal_deopt_info() != NULL) {
+        oop deopt_info = thread->graal_deopt_info();
+        if (java_lang_String::is_instance(deopt_info)) {
+          char buf[1024];
+          java_lang_String::as_utf8_string(deopt_info, buf, 1024);
+          tty->print_cr("deopt info: %s", buf);
+        } else {
+          tty->print_cr("deopt info:");
+          deopt_info->print();
+        }
+        thread->set_graal_deopt_info(NULL);
+      }
+    }
+
     methodHandle    trap_method = trap_scope->method();
     int             trap_bci    = trap_scope->bci();
     Bytecodes::Code trap_bc     = trap_method->java_code_at(trap_bci);
 
+    if (trap_scope->rethrow_exception()) {
+      if (PrintDeoptimizationDetails) {
+        tty->print_cr("Exception to be rethrown in the interpreter for method %s::%s at bci %d", instanceKlass::cast(trap_method->method_holder())->name()->as_C_string(), trap_method->name()->as_C_string(), trap_bci);
+      }
+      GrowableArray<ScopeValue*>* expressions = trap_scope->expressions();
+      guarantee(expressions != NULL, "must have exception to throw");
+      ScopeValue* topOfStack = expressions->top();
+      Handle topOfStackObj = cvf->create_stack_value(topOfStack)->get_obj();
+      THREAD->set_pending_exception(topOfStackObj(), NULL, 0);
+    }
+    
     // Record this event in the histogram.
     gather_statistics(reason, action, trap_bc);
 
@@ -1666,7 +1705,9 @@ Deoptimization::update_method_data_from_interpreter(methodDataHandle trap_mdo, i
 }
 
 Deoptimization::UnrollBlock* Deoptimization::uncommon_trap(JavaThread* thread, jint trap_request) {
-
+  if (TraceDeoptimization) {
+    tty->print("Uncommon trap "); 
+  }
   // Still in Java no safepoints
   {
     // This enters VM and may safepoint
@@ -1923,40 +1964,3 @@ void Deoptimization::print_statistics() {
     if (xtty != NULL)  xtty->tail("statistics");
   }
 }
-#else // COMPILER2 || SHARK
-
-
-// Stubs for C1 only system.
-bool Deoptimization::trap_state_is_recompiled(int trap_state) {
-  return false;
-}
-
-const char* Deoptimization::trap_reason_name(int reason) {
-  return "unknown";
-}
-
-void Deoptimization::print_statistics() {
-  // no output
-}
-
-void
-Deoptimization::update_method_data_from_interpreter(methodDataHandle trap_mdo, int trap_bci, int reason) {
-  // no udpate
-}
-
-int Deoptimization::trap_state_has_reason(int trap_state, int reason) {
-  return 0;
-}
-
-void Deoptimization::gather_statistics(DeoptReason reason, DeoptAction action,
-                                       Bytecodes::Code bc) {
-  // no update
-}
-
-const char* Deoptimization::format_trap_state(char* buf, size_t buflen,
-                                              int trap_state) {
-  jio_snprintf(buf, buflen, "#%d", trap_state);
-  return buf;
-}
-
-#endif // COMPILER2 || SHARK

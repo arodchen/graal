@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/scopeDesc.hpp"
 #include "interpreter/interpreter.hpp"
 #include "memory/allocation.inline.hpp"
 #include "memory/resourceArea.hpp"
@@ -62,7 +63,7 @@ void vframeArrayElement::fill_in(compiledVFrame* vf) {
   _method = vf->method();
   _bci    = vf->raw_bci();
   _reexecute = vf->should_reexecute();
-
+  
   int index;
 
   // Get the monitors off-stack
@@ -126,7 +127,6 @@ void vframeArrayElement::fill_in(compiledVFrame* vf) {
 
   // Now the expressions off-stack
   // Same silliness as above
-
   StackValueCollection *exprs = vf->expressions();
   _expressions = new StackValueCollection(exprs->size());
   for(index = 0; index < exprs->size(); index++) {
@@ -251,6 +251,7 @@ void vframeArrayElement::unpack_on_stack(int caller_actual_parameters,
       case Deoptimization::Unpack_uncommon_trap:
       case Deoptimization::Unpack_reexecute:
         // redo last byte code
+        assert(should_reexecute(), "");
         pc  = Interpreter::deopt_entry(vtos, 0);
         use_next_mdp = false;
         break;
@@ -306,22 +307,41 @@ void vframeArrayElement::unpack_on_stack(int caller_actual_parameters,
       iframe()->interpreter_frame_set_mdp(mdp);
     }
   }
+  
+  if (PrintDeoptimizationDetails) {
+    tty->print_cr("Expressions size: %d", expressions()->size());
+  }
 
   // Unpack expression stack
   // If this is an intermediate frame (i.e. not top frame) then this
   // only unpacks the part of the expression stack not used by callee
   // as parameters. The callee parameters are unpacked as part of the
   // callee locals.
-  int i;
-  for(i = 0; i < expressions()->size(); i++) {
+  for(int i = 0; i < expressions()->size(); i++) {
     StackValue *value = expressions()->at(i);
     intptr_t*   addr  = iframe()->interpreter_frame_expression_stack_at(i);
     switch(value->type()) {
       case T_INT:
         *addr = value->get_int();
+#ifndef PRODUCT
+        if (PrintDeoptimizationDetails) {
+          tty->print_cr("Reconstructed expression %d (INT): %d", i, (int)(*addr));
+        }
+#endif
         break;
       case T_OBJECT:
         *addr = value->get_int(T_OBJECT);
+#ifndef PRODUCT
+        if (PrintDeoptimizationDetails) {
+          tty->print("Reconstructed expression %d (OBJECT): ", i);
+          oop o = (oop)(*addr);
+          if (o == NULL) {
+            tty->print_cr("NULL");
+          } else {
+            tty->print_cr(err_msg("%s", o->blueprint()->name()->as_C_string()));
+          }
+        }
+#endif
         break;
       case T_CONFLICT:
         // A dead stack slot.  Initialize to null in case it is an oop.
@@ -334,15 +354,31 @@ void vframeArrayElement::unpack_on_stack(int caller_actual_parameters,
 
 
   // Unpack the locals
-  for(i = 0; i < locals()->size(); i++) {
+  for(int i = 0; i < locals()->size(); i++) {
     StackValue *value = locals()->at(i);
     intptr_t* addr  = iframe()->interpreter_frame_local_at(i);
     switch(value->type()) {
       case T_INT:
         *addr = value->get_int();
+#ifndef PRODUCT
+        if (PrintDeoptimizationDetails) {
+          tty->print_cr("Reconstructed local %d (INT): %d", i, (int)(*addr));
+        }
+#endif
         break;
       case T_OBJECT:
         *addr = value->get_int(T_OBJECT);
+#ifndef PRODUCT
+        if (PrintDeoptimizationDetails) {
+          tty->print("Reconstructed local %d (OBJECT): ", i);
+          oop o = (oop)(*addr);
+          if (o == NULL) {
+            tty->print_cr("NULL");
+          } else {
+            tty->print_cr(err_msg("%s", o->blueprint()->name()->as_C_string()));
+          }
+        }
+#endif
         break;
       case T_CONFLICT:
         // A dead location. If it is an oop then we need a NULL to prevent GC from following it
@@ -384,18 +420,13 @@ void vframeArrayElement::unpack_on_stack(int caller_actual_parameters,
   }
 
 #ifndef PRODUCT
-  if (TraceDeoptimization && Verbose) {
+  if (PrintDeoptimizationDetails) {
     ttyLocker ttyl;
     tty->print_cr("[%d Interpreted Frame]", ++unpack_counter);
     iframe()->print_on(tty);
     RegisterMap map(thread);
     vframe* f = vframe::new_vframe(iframe(), &map, thread);
     f->print();
-
-    tty->print_cr("locals size     %d", locals()->size());
-    tty->print_cr("expression size %d", expressions()->size());
-
-    method()->print_value();
     tty->cr();
     // method()->print_codes();
   } else if (TraceDeoptimization) {

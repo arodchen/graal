@@ -201,8 +201,16 @@ void Runtime1::generate_blob_for(BufferBlob* buffer_blob, StubID id) {
     case slow_subtype_check_id:
     case fpu2long_stub_id:
     case unwind_exception_id:
-    case counter_overflow_id:
-#if defined(SPARC) || defined(PPC)
+    case graal_verify_pointer_id:
+    case graal_unwind_exception_call_id:
+    case graal_slow_subtype_check_id:
+    case graal_arithmetic_frem_id:
+    case graal_arithmetic_drem_id:
+    case graal_set_deopt_info_id:
+#ifndef TIERED
+    case counter_overflow_id: // Not generated outside the tiered world
+#endif
+#ifdef SPARC
     case handle_exception_nofpu_id:  // Unused on sparc
 #endif
       break;
@@ -546,7 +554,7 @@ JRT_ENTRY_NO_ASYNC(static address, exception_handler_for_pc_helper(JavaThread* t
     thread->set_exception_pc(pc);
 
     // the exception cache is used only by non-implicit exceptions
-    if (continuation != NULL) {
+    if (continuation != NULL && !SharedRuntime::deopt_blob()->contains(continuation)) {
       nm->add_handler_for_exception_and_pc(exception, pc, continuation);
     }
   }
@@ -583,7 +591,6 @@ address Runtime1::exception_handler_for_pc(JavaThread* thread) {
     continuation = exception_handler_for_pc_helper(thread, exception, pc, nm);
   }
   // Back in JAVA, use no oops DON'T safepoint
-
   // Now check to see if the nmethod we were called from is now deoptimized.
   // If so we must return to the deopt blob and deoptimize the nmethod
   if (nm != NULL && caller_is_deopted()) {
@@ -640,14 +647,85 @@ JRT_ENTRY(void, Runtime1::throw_incompatible_class_change_error(JavaThread* thre
 JRT_END
 
 
-JRT_ENTRY_NO_ASYNC(void, Runtime1::monitorenter(JavaThread* thread, oopDesc* obj, BasicObjectLock* lock))
+JRT_ENTRY_NO_ASYNC(void, Runtime1::graal_monitorenter(JavaThread* thread, oopDesc* obj, BasicLock* lock))
   NOT_PRODUCT(_monitorenter_slowcase_cnt++;)
+#ifdef ASSERT
+  if (TraceGraal >= 3) {
+    tty->print_cr("entered locking slow case with obj=" INTPTR_FORMAT " and lock= " INTPTR_FORMAT, obj, lock);
+  }
   if (PrintBiasedLockingStatistics) {
     Atomic::inc(BiasedLocking::slow_path_entry_count_addr());
   }
+#endif
   Handle h_obj(thread, obj);
   assert(h_obj()->is_oop(), "must be NULL or an object");
   if (UseBiasedLocking) {
+    // Retry fast entry if bias is revoked to avoid unnecessary inflation
+    ObjectSynchronizer::fast_enter(h_obj, lock, true, CHECK);
+  } else {
+    if (UseFastLocking) {
+      // When using fast locking, the compiled code has already tried the fast case
+      ObjectSynchronizer::slow_enter(h_obj, lock, THREAD);
+    } else {
+      ObjectSynchronizer::fast_enter(h_obj, lock, false, THREAD);
+    }
+  }
+#ifdef ASSERT
+  if (TraceGraal >= 3) {
+    tty->print_cr("exiting locking");
+    tty->print_cr("");
+    tty->print_cr("done");
+  }
+#endif
+JRT_END
+
+
+JRT_LEAF(void, Runtime1::graal_monitorexit(JavaThread* thread, oopDesc* obj, BasicLock* lock))
+  NOT_PRODUCT(_monitorexit_slowcase_cnt++;)
+  assert(thread == JavaThread::current(), "threads must correspond");
+  assert(thread->last_Java_sp(), "last_Java_sp must be set");
+  // monitorexit is non-blocking (leaf routine) => no exceptions can be thrown
+  EXCEPTION_MARK;
+
+#ifdef DEBUG
+  if (!obj->is_oop()) {
+    ResetNoHandleMark rhm;
+    nmethod* method = thread->last_frame().cb()->as_nmethod_or_null();
+    if (method != NULL) {
+      tty->print_cr("ERROR in monitorexit in method %s wrong obj " INTPTR_FORMAT, method->name(), obj);
+    }
+    thread->print_stack_on(tty);
+    assert(false, "invalid lock object pointer dected");
+  }
+#endif
+
+  if (UseFastLocking) {
+    // When using fast locking, the compiled code has already tried the fast case
+    ObjectSynchronizer::slow_exit(obj, lock, THREAD);
+  } else {
+    ObjectSynchronizer::fast_exit(obj, lock, THREAD);
+  }
+JRT_END
+
+
+JRT_ENTRY_NO_ASYNC(void, Runtime1::monitorenter(JavaThread* thread, oopDesc* obj, BasicObjectLock* lock))
+  NOT_PRODUCT(_monitorenter_slowcase_cnt++;)
+#ifdef ASSERT
+  if (TraceGraal >= 3) {
+    tty->print_cr("entered locking slow case with obj=" INTPTR_FORMAT " and lock= " INTPTR_FORMAT, obj, lock);
+  }
+  if (PrintBiasedLockingStatistics) {
+    Atomic::inc(BiasedLocking::slow_path_entry_count_addr());
+  }
+#endif
+  Handle h_obj(thread, obj);
+  assert(h_obj()->is_oop(), "must be NULL or an object");
+  if (UseBiasedLocking) {
+    if (UseFastLocking) {
+      assert(obj == lock->obj(), "must match");
+    } else {
+      lock->set_obj(obj);
+    }
     // Retry fast entry if bias is revoked to avoid unnecessary inflation
     ObjectSynchronizer::fast_enter(h_obj, lock->lock(), true, CHECK);
   } else {
@@ -660,6 +738,14 @@ JRT_ENTRY_NO_ASYNC(void, Runtime1::monitorenter(JavaThread* thread, oopDesc* obj
       ObjectSynchronizer::fast_enter(h_obj, lock->lock(), false, THREAD);
     }
   }
+#ifdef ASSERT
+  if (TraceGraal >= 3) {
+    tty->print_cr("exiting locking lock state: obj=" INTPTR_FORMAT, lock->obj());
+    lock->lock()->print_on(tty);
+    tty->print_cr("");
+    tty->print_cr("done");
+  }
+#endif
 JRT_END
 
 
@@ -671,7 +757,19 @@ JRT_LEAF(void, Runtime1::monitorexit(JavaThread* thread, BasicObjectLock* lock))
   EXCEPTION_MARK;
 
   oop obj = lock->obj();
-  assert(obj->is_oop(), "must be NULL or an object");
+
+#ifdef DEBUG
+  if (!obj->is_oop()) {
+    ResetNoHandleMark rhm;
+    nmethod* method = thread->last_frame().cb()->as_nmethod_or_null();
+    if (method != NULL) {
+      tty->print_cr("ERROR in monitorexit in method %s wrong obj " INTPTR_FORMAT, method->name(), obj);
+    }
+    thread->print_stack_on(tty);
+    assert(false, "invalid lock object pointer dected");
+  }
+#endif
+
   if (UseFastLocking) {
     // When using fast locking, the compiled code has already tried the fast case
     ObjectSynchronizer::slow_exit(obj, lock->lock(), THREAD);
@@ -880,7 +978,9 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* thread, Runtime1::StubID stub_i
           assert(k != NULL && !k->is_klass(), "must be class mirror or other Java constant");
         }
         break;
-      default: Unimplemented();
+      default:
+        tty->print_cr("Unhandled bytecode: %d stub_id=%d caller=%s bci=%d pc=%d", code, stub_id, caller_method->name()->as_C_string(), bci, caller_frame.pc());
+        Unimplemented();
     }
     // convert to handle
     load_klass = Handle(THREAD, k);

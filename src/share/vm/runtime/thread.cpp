@@ -29,6 +29,9 @@
 #include "classfile/vmSymbols.hpp"
 #include "code/scopeDesc.hpp"
 #include "compiler/compileBroker.hpp"
+#ifdef GRAAL
+#include "graal/graalCompiler.hpp"
+#endif
 #include "interpreter/interpreter.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "interpreter/oopMapCache.hpp"
@@ -1273,7 +1276,9 @@ void JavaThread::initialize() {
 
   // Set the claimed par_id to -1 (ie not claiming any par_ids)
   set_claimed_par_id(-1);
-
+  
+  _env   = NULL;
+  _buffer_blob = NULL;
   set_saved_exception_pc(NULL);
   set_threadObj(NULL);
   _anchor.clear();
@@ -1298,6 +1303,7 @@ void JavaThread::initialize() {
   _in_deopt_handler = 0;
   _doing_unsafe_access = false;
   _stack_guard_state = stack_guard_unused;
+  _graal_deopt_info = NULL;
   _exception_oop = NULL;
   _exception_pc  = 0;
   _exception_handler_pc = 0;
@@ -1316,6 +1322,7 @@ void JavaThread::initialize() {
   _do_not_unlock_if_synchronized = false;
   _cached_monitor_info = NULL;
   _parker = Parker::Allocate(this) ;
+  _scanned_nmethod = NULL;
 
 #ifndef PRODUCT
   _jmp_ring_index = 0;
@@ -2031,7 +2038,9 @@ void JavaThread::send_thread_stop(oop java_throwable)  {
 
   // Do not throw asynchronous exceptions against the compiler thread
   // (the compiler thread should not be a Java thread -- fix in 1.4.2)
-  if (is_Compiler_thread()) return;
+
+  // (tw) May we do this?
+  //if (is_Compiler_thread()) return;
 
   {
     // Actually throw the Throwable against the target Thread - however
@@ -2612,12 +2621,20 @@ void JavaThread::oops_do(OopClosure* f, CodeBlobClosure* cf) {
   f->do_oop((oop*) &_threadObj);
   f->do_oop((oop*) &_vm_result);
   f->do_oop((oop*) &_vm_result_2);
+  f->do_oop((oop*) &_graal_deopt_info);
   f->do_oop((oop*) &_exception_oop);
   f->do_oop((oop*) &_pending_async_exception);
 
   if (jvmti_thread_state() != NULL) {
     jvmti_thread_state()->oops_do(f);
   }
+
+  if (_scanned_nmethod != NULL && cf != NULL) {
+      // Safepoints can occur when the sweeper is scanning an nmethod so
+      // process it here to make sure it isn't unloaded in the middle of
+      // a scan.
+      cf->do_code_blob(_scanned_nmethod);
+    }
 }
 
 void JavaThread::nmethods_do(CodeBlobClosure* cf) {
@@ -3036,33 +3053,23 @@ klassOop JavaThread::security_get_caller_class(int depth) {
 
 static void compiler_thread_entry(JavaThread* thread, TRAPS) {
   assert(thread->is_Compiler_thread(), "must be compiler thread");
+// XXX (gd) currently we still start c1 compiler threads even with Graal, they just die immediately, more compileBroker cleanup is needed to eliminate that
+#ifndef GRAAL
   CompileBroker::compiler_thread_loop();
+#endif
 }
 
 // Create a CompilerThread
 CompilerThread::CompilerThread(CompileQueue* queue, CompilerCounters* counters)
 : JavaThread(&compiler_thread_entry) {
-  _env   = NULL;
   _log   = NULL;
   _task  = NULL;
   _queue = queue;
   _counters = counters;
-  _buffer_blob = NULL;
-  _scanned_nmethod = NULL;
 
 #ifndef PRODUCT
   _ideal_graph_printer = NULL;
 #endif
-}
-
-void CompilerThread::oops_do(OopClosure* f, CodeBlobClosure* cf) {
-  JavaThread::oops_do(f, cf);
-  if (_scanned_nmethod != NULL && cf != NULL) {
-    // Safepoints can occur when the sweeper is scanning an nmethod so
-    // process it here to make sure it isn't unloaded in the middle of
-    // a scan.
-    cf->do_code_blob(_scanned_nmethod);
-  }
 }
 
 // ======= Threads ========
@@ -4060,7 +4067,9 @@ GrowableArray<JavaThread*>* Threads::get_pending_threads(int count,
   {
     MutexLockerEx ml(doLock ? Threads_lock : NULL);
     ALL_JAVA_THREADS(p) {
-      if (p->is_Compiler_thread()) continue;
+      
+      // (tw) May we do this?
+      //if (p->is_Compiler_thread()) continue;
 
       address pending = (address)p->current_pending_monitor();
       if (pending == monitor) {             // found a match
