@@ -38,7 +38,6 @@ import com.oracle.graal.hotspot.ri.*;
 import com.oracle.graal.hotspot.server.*;
 import com.oracle.graal.hotspot.snippets.*;
 import com.oracle.graal.java.*;
-import com.oracle.graal.nodes.*;
 import com.oracle.graal.snippets.*;
 import com.oracle.max.cri.ci.*;
 import com.oracle.max.cri.ri.*;
@@ -50,8 +49,6 @@ import com.oracle.max.criutils.*;
 public class VMToCompilerImpl implements VMToCompiler, Remote {
 
     private final Compiler compiler;
-    private int compiledMethodCount;
-    private long totalCompilationTime;
     private IntrinsifyArrayCopyPhase intrinsifyArrayCopy;
 
     public final HotSpotTypePrimitive typeBoolean;
@@ -63,33 +60,6 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
     public final HotSpotTypePrimitive typeInt;
     public final HotSpotTypePrimitive typeLong;
     public final HotSpotTypePrimitive typeVoid;
-
-    ThreadFactory compilerThreadFactory = new ThreadFactory() {
-
-        @Override
-        public Thread newThread(Runnable r) {
-            return new CompilerThread(r);
-        }
-    };
-
-    private final class CompilerThread extends Thread {
-
-        public CompilerThread(Runnable r) {
-            super(r);
-            this.setName("GraalCompilerThread-" + this.getId());
-            this.setDaemon(true);
-        }
-
-        @Override
-        public void run() {
-            if (GraalOptions.Debug) {
-                Debug.enable();
-                HotSpotDebugConfig hotspotDebugConfig = new HotSpotDebugConfig(GraalOptions.Log, GraalOptions.Meter, GraalOptions.Time, GraalOptions.Dump, GraalOptions.MethodFilter);
-                Debug.setConfig(hotspotDebugConfig);
-            }
-            super.run();
-        }
-    }
 
     private ThreadPoolExecutor compileQueue;
 
@@ -120,6 +90,7 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
         final HotSpotRuntime runtime = (HotSpotRuntime) compiler.getCompiler().runtime;
         if (GraalOptions.Intrinsify) {
             Debug.scope("InstallSnippets", new DebugDumpScope("InstallSnippets"), new Runnable() {
+
                 @Override
                 public void run() {
                     VMToCompilerImpl.this.intrinsifyArrayCopy = new IntrinsifyArrayCopyPhase(runtime);
@@ -133,7 +104,7 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
         }
 
         // Create compilation queue.
-        compileQueue = new ThreadPoolExecutor(GraalOptions.Threads, GraalOptions.Threads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(), compilerThreadFactory);
+        compileQueue = new ThreadPoolExecutor(GraalOptions.Threads, GraalOptions.Threads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(), CompilerThread.FACTORY);
 
         // Create queue status printing thread.
         if (GraalOptions.PrintQueue) {
@@ -199,8 +170,6 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
     }
 
     public void shutdownCompiler() throws Throwable {
-        // compiler.getCompiler().context.print();
-        // TODO (thomaswue): Print context results.
         compileQueue.shutdown();
 
         if (Debug.isEnabled()) {
@@ -209,26 +178,40 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
             if (debugValues.size() > 0) {
                 if (GraalOptions.SummarizeDebugValues) {
                     printSummary(topLevelMaps, debugValues);
-                } else {
+                } else if (GraalOptions.PerThreadDebugValues) {
                     for (DebugValueMap map : topLevelMaps) {
                         TTY.println("Showing the results for thread: " + map.getName());
                         map.group();
                         map.normalize();
                         printMap(map, debugValues, 0);
                     }
+                } else {
+                    DebugValueMap globalMap = new DebugValueMap("Global");
+                    for (DebugValueMap map : topLevelMaps) {
+                        if (GraalOptions.SummarizePerPhase) {
+                            flattenChildren(map, globalMap);
+                        } else {
+                            for (DebugValueMap child : map.getChildren()) {
+                                globalMap.addChild(child);
+                            }
+                        }
+                    }
+                    if (!GraalOptions.SummarizePerPhase) {
+                        globalMap.group();
+                    }
+                    globalMap.normalize();
+                    printMap(globalMap, debugValues, 0);
                 }
             }
         }
-
-        if (GraalOptions.PrintCompilationStatistics) {
-            printCompilationStatistics();
-        }
     }
 
-    private void printCompilationStatistics() {
-        TTY.println("Accumulated compilation statistics");
-        TTY.println("  Compiled methods         : %d", compiledMethodCount);
-        TTY.println("  Total compilation time   : %6.3f s", totalCompilationTime / Math.pow(10, 9));
+    private void flattenChildren(DebugValueMap map, DebugValueMap globalMap) {
+        globalMap.addChild(map);
+        for (DebugValueMap child : map.getChildren()) {
+            flattenChildren(child, globalMap);
+        }
+        map.clearChildren();
     }
 
     private static void printSummary(List<DebugValueMap> topLevelMaps, List<DebugValue> debugValues) {
@@ -257,16 +240,15 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
         return total;
     }
 
-
     private static void printMap(DebugValueMap map, List<DebugValue> debugValues, int level) {
 
         printIndent(level);
-        TTY.println(map.getName());
+        TTY.println("%s", map.getName());
         for (DebugValue value : debugValues) {
             long l = map.getCurrentValue(value.getIndex());
             if (l != 0) {
                 printIndent(level + 1);
-                TTY.println(value.getName() + "=" + l);
+                TTY.println(value.getName() + "=" + value.toString(l));
             }
         }
 
@@ -284,79 +266,27 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
 
     @Override
     public boolean compileMethod(final HotSpotMethodResolved method, final int entryBCI, boolean blocking) throws Throwable {
-        try {
-            if (Thread.currentThread() instanceof CompilerThread) {
-                if (method.holder().name().contains("java/util/concurrent")) {
-                    // This is required to avoid deadlocking a compiler thread. The issue is that a
-                    // java.util.concurrent.BlockingQueue is used to implement the compilation worker
-                    // queues. If a compiler thread triggers a compilation, then it may be blocked trying
-                    // to add something to its own queue.
-                    return false;
-                }
+        if (Thread.currentThread() instanceof CompilerThread) {
+            if (method.holder().name().contains("java/util/concurrent")) {
+                // This is required to avoid deadlocking a compiler thread. The issue is that a
+                // java.util.concurrent.BlockingQueue is used to implement the compilation worker
+                // queues. If a compiler thread triggers a compilation, then it may be blocked trying
+                // to add something to its own queue.
+                return false;
             }
+        }
 
-            Runnable runnable = new Runnable() {
-
-                public void run() {
-                    try {
-                        final OptimisticOptimizations optimisticOpts = new OptimisticOptimizations(method);
-                        final PhasePlan plan = createHotSpotSpecificPhasePlan(optimisticOpts);
-                        long startTime = System.nanoTime();
-                        int index = compiledMethodCount++;
-                        final boolean printCompilation = GraalOptions.PrintCompilation && !TTY.isSuppressed();
-                        if (printCompilation) {
-                            TTY.println(String.format("Graal %4d %-70s %-45s %-50s ...", index, method.holder().name(), method.name(), method.signature().asString()));
-                        }
-                        optimisticOpts.log(method);
-
-                        CiTargetMethod result = null;
-                        TTY.Filter filter = new TTY.Filter(GraalOptions.PrintFilter, method);
-                        long nanoTime;
-                        try {
-                            result = Debug.scope("Compiling", new Callable<CiTargetMethod>() {
-                                @Override
-                                public CiTargetMethod call() throws Exception {
-                                    StructuredGraph graph = new StructuredGraph(method);
-                                    return compiler.getCompiler().compileMethod(method, graph, -1, plan, optimisticOpts);
-                                }
-                            });
-                        } finally {
-                            filter.remove();
-                            nanoTime = System.nanoTime() - startTime;
-                            totalCompilationTime += nanoTime;
-                            if (printCompilation) {
-                                TTY.println(String.format("Graal %4d %-70s %-45s %-50s | %3d.%dms %4dnodes %5dB", index, "", "", "", nanoTime / 1000000, nanoTime % 1000000, 0, (result != null ? result.targetCodeSize()
-                                                : -1)));
-                            }
-                        }
-                        compiler.getRuntime().installMethod(method, result);
-                    } catch (CiBailout bailout) {
-                        Debug.metric("Bailouts").increment();
-                        if (GraalOptions.PrintBailouts || GraalOptions.ExitVMOnBailout) {
-                            TTY.println("WARN: Compilation bailout");
-                            bailout.printStackTrace(TTY.cachedOut);
-
-                            if (GraalOptions.ExitVMOnBailout) {
-                                System.exit(-1);
-                            }
-                        }
-                    } catch (Throwable t) {
-                        if (GraalOptions.ExitVMOnException) {
-                            t.printStackTrace(TTY.cachedOut);
-                            System.exit(-1);
-                        }
-                    }
-                }
-            };
-
-            if (blocking) {
-                runnable.run();
-            } else {
-                compileQueue.execute(runnable);
+        final OptimisticOptimizations optimisticOpts = new OptimisticOptimizations(method);
+        Runnable task = CompilationTask.create(compiler, createHotSpotSpecificPhasePlan(optimisticOpts), optimisticOpts, method);
+        if (blocking) {
+            task.run();
+        } else {
+            try {
+                compileQueue.execute(task);
+            } catch (RejectedExecutionException e) {
+                // The compile queue was already shut down.
+                return false;
             }
-        } catch (RejectedExecutionException e) {
-            // The compile queue was already shut down.
-            return false;
         }
         return true;
     }
@@ -449,6 +379,7 @@ public class VMToCompilerImpl implements VMToCompiler, Remote {
     public CiConstant createCiConstantObject(Object object) {
         return CiConstant.forObject(object);
     }
+
 
     private PhasePlan createHotSpotSpecificPhasePlan(OptimisticOptimizations optimisticOpts) {
         PhasePlan phasePlan = new PhasePlan();
