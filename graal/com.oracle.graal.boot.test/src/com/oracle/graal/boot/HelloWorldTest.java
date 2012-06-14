@@ -22,7 +22,13 @@
  */
 package com.oracle.graal.boot;
 
+import com.oracle.graal.boot.test.helloworld.*;
+
 
 public class HelloWorldTest {
-
+    public static void main(String[] args) {
+        BootImageGenerator generator = new BootImageGenerator();
+        generator.addEntryMethod(HelloWorldTestProgram.class, "main", String[].class);
+        generator.logState();
+    }
 }
