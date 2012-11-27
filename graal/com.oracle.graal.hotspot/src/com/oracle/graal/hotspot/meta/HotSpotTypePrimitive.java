@@ -187,4 +187,9 @@ public final class HotSpotTypePrimitive extends HotSpotJavaType implements Resol
     public ResolvedJavaField findFieldWithOffset(long offset) {
         return null;
     }
+
+    @Override
+    public Class<?> mirror() {
+        return javaMirror;
+    }
 }
