@@ -55,8 +55,8 @@ import com.oracle.graal.snippets.SnippetTemplate.UsageReplacer;
  */
 public abstract class InstanceOfSnippetsTemplates<T extends SnippetsInterface> extends AbstractTemplates<T> {
 
-    public InstanceOfSnippetsTemplates(MetaAccessProvider runtime, TargetDescription target, Class<T> snippetsClass) {
-        super(runtime, target, snippetsClass);
+    public InstanceOfSnippetsTemplates(MetaAccessProvider runtime, Assumptions assumptions, TargetDescription target, Class<T> snippetsClass) {
+        super(runtime, assumptions, target, snippetsClass);
     }
 
     /**
@@ -92,7 +92,7 @@ public abstract class InstanceOfSnippetsTemplates<T extends SnippetsInterface> e
                 replacer.replaceUsingInstantiation();
             } else {
                 KeyAndArguments keyAndArguments = getKeyAndArguments(replacer, tool);
-                SnippetTemplate template = cache.get(keyAndArguments.key);
+                SnippetTemplate template = cache.get(keyAndArguments.key, assumptions);
                 template.instantiate(runtime, instanceOf, replacer, tool.lastFixedNode(), keyAndArguments.arguments);
             }
         }

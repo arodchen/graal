@@ -21,16 +21,43 @@
  * questions.
  */
 
-#ifdef HIGH_LEVEL_INTERPRETER
-#ifndef SHARE_VM_GRAAL_GRAAL_INTERPRETER_TO_VM_HPP
-#define SHARE_VM_GRAAL_GRAAL_INTERPRETER_TO_VM_HPP
+#include "precompiled.hpp"
+#include "utilities/machineCodePrinter.hpp"
+#include "utilities/ostream.hpp"
 
-#include "prims/jni.h"
+fileStream* MachineCodePrinter::_st = NULL;
+volatile int MachineCodePrinter::_write_lock = 0;
 
-extern JNINativeMethod InterpreterToVM_methods[];
-int InterpreterToVM_methods_count();
+void MachineCodePrinter::initialize() {
+  _st = new (ResourceObj::C_HEAP, mtInternal) fileStream("machineCode.txt");
+}
 
-// nothing here - no need to define the jni method implementations in a header file
+void MachineCodePrinter::print(nmethod* nm) {
+  lock();
+  Disassembler::decode(nm, _st);
+  unlock();
+}
 
-#endif // SHARE_VM_GRAAL_GRAAL_INTERPRETER_TO_VM_HPP
-#endif // HIGH_LEVEL_INTERPRETER
+void MachineCodePrinter::print(CodeBlob* cb) {
+  lock();
+  Disassembler::decode(cb, _st);
+  unlock();
+}
+
+void MachineCodePrinter::print(StubQueue* stub_queue) {
+  lock();
+  stub_queue->print_on(_st);
+  unlock();
+}
+
+void MachineCodePrinter::flush() {
+  _st->flush();
+}
+
+void MachineCodePrinter::lock() {
+  Thread::SpinAcquire(&_write_lock, "Put");
+}
+
+void MachineCodePrinter::unlock() {
+  Thread::SpinRelease(&_write_lock);
+}

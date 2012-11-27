@@ -165,8 +165,8 @@ public class InstanceOfSnippets implements SnippetsInterface {
         private final ResolvedJavaMethod instanceofPrimary;
         private final ResolvedJavaMethod instanceofSecondary;
 
-        public Templates(CodeCacheProvider runtime, TargetDescription target) {
-            super(runtime, target, InstanceOfSnippets.class);
+        public Templates(CodeCacheProvider runtime, Assumptions assumptions, TargetDescription target) {
+            super(runtime, assumptions, target, InstanceOfSnippets.class);
             instanceofExact = snippet("instanceofExact", Object.class, Word.class, Object.class, Object.class, boolean.class);
             instanceofPrimary = snippet("instanceofPrimary", Word.class, Object.class, Object.class, Object.class, boolean.class, int.class);
             instanceofSecondary = snippet("instanceofSecondary", Word.class, Object.class, Object.class, Object.class, Word[].class, boolean.class);
