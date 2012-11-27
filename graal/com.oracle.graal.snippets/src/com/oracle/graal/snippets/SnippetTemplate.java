@@ -165,13 +165,13 @@ public class SnippetTemplate {
         /**
          * Gets a template for a given key, creating it first if necessary.
          */
-        public SnippetTemplate get(final SnippetTemplate.Key key) {
+        public SnippetTemplate get(final SnippetTemplate.Key key, final Assumptions assumptions) {
             SnippetTemplate template = templates.get(key);
             if (template == null) {
                 template = Debug.scope("SnippetSpecialization", key.method, new Callable<SnippetTemplate>() {
                     @Override
                     public SnippetTemplate call() throws Exception {
-                        return new SnippetTemplate(runtime, target, key);
+                        return new SnippetTemplate(runtime, assumptions, target, key);
                     }
                 });
                 //System.out.println(key + " -> " + template);
@@ -184,9 +184,12 @@ public class SnippetTemplate {
     public abstract static class AbstractTemplates<T extends SnippetsInterface> {
         protected final Cache cache;
         protected final MetaAccessProvider runtime;
+        protected final Assumptions assumptions;
         protected Class<T> snippetsClass;
-        public AbstractTemplates(MetaAccessProvider runtime, TargetDescription target, Class<T> snippetsClass) {
+
+        public AbstractTemplates(MetaAccessProvider runtime, Assumptions assumptions, TargetDescription target, Class<T> snippetsClass) {
             this.runtime = runtime;
+            this.assumptions = assumptions;
             this.snippetsClass = snippetsClass;
             this.cache = new Cache(runtime, target);
         }
@@ -217,7 +220,7 @@ public class SnippetTemplate {
     /**
      * Creates a snippet template.
      */
-    public SnippetTemplate(MetaAccessProvider runtime, TargetDescription target, SnippetTemplate.Key key) {
+    public SnippetTemplate(MetaAccessProvider runtime, Assumptions assumptions, TargetDescription target, SnippetTemplate.Key key) {
         ResolvedJavaMethod method = key.method;
         assert Modifier.isStatic(method.getModifiers()) : "snippet method must be static: " + method;
         Signature signature = method.getSignature();
@@ -264,7 +267,7 @@ public class SnippetTemplate {
             new SnippetIntrinsificationPhase(runtime, new BoxingMethodPool(runtime), false).apply(snippetCopy);
             new WordTypeRewriterPhase(target.wordKind).apply(snippetCopy);
 
-            new CanonicalizerPhase(null, runtime, null, 0, null).apply(snippetCopy);
+            new CanonicalizerPhase(null, runtime, assumptions, 0, null).apply(snippetCopy);
         }
 
         // Gather the template parameters
@@ -317,8 +320,8 @@ public class SnippetTemplate {
                 if (loopBegin != null) {
                     LoopEx loop = new LoopsData(snippetCopy).loop(loopBegin);
                     int mark = snippetCopy.getMark();
-                    LoopTransformations.fullUnroll(loop, runtime);
-                    new CanonicalizerPhase(null, runtime, null, mark, null).apply(snippetCopy);
+                    LoopTransformations.fullUnroll(loop, runtime, null);
+                    new CanonicalizerPhase(null, runtime, assumptions, mark, null).apply(snippetCopy);
                 }
                 FixedNode explodeLoopNext = explodeLoop.next();
                 explodeLoop.clearSuccessors();

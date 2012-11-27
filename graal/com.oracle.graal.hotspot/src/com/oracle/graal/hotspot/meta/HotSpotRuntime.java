@@ -203,7 +203,7 @@ public abstract class HotSpotRuntime implements GraalCodeCacheProvider {
 
     protected abstract RegisterConfig createRegisterConfig(boolean globalStubConfig);
 
-    public void installSnippets(SnippetInstaller installer) {
+    public void installSnippets(SnippetInstaller installer, Assumptions assumptions) {
         installer.install(SystemSnippets.class);
         installer.install(UnsafeSnippets.class);
         installer.install(ArrayCopySnippets.class);
@@ -213,10 +213,10 @@ public abstract class HotSpotRuntime implements GraalCodeCacheProvider {
         installer.install(NewObjectSnippets.class);
         installer.install(MonitorSnippets.class);
 
-        checkcastSnippets = new CheckCastSnippets.Templates(this, graalRuntime.getTarget());
-        instanceofSnippets = new InstanceOfSnippets.Templates(this, graalRuntime.getTarget());
-        newObjectSnippets = new NewObjectSnippets.Templates(this, graalRuntime.getTarget(), config.useTLAB);
-        monitorSnippets = new MonitorSnippets.Templates(this, graalRuntime.getTarget(), config.useFastLocking);
+        checkcastSnippets = new CheckCastSnippets.Templates(this, assumptions, graalRuntime.getTarget());
+        instanceofSnippets = new InstanceOfSnippets.Templates(this, assumptions, graalRuntime.getTarget());
+        newObjectSnippets = new NewObjectSnippets.Templates(this, assumptions, graalRuntime.getTarget(), config.useTLAB);
+        monitorSnippets = new MonitorSnippets.Templates(this, assumptions, graalRuntime.getTarget(), config.useFastLocking);
     }
 
 
@@ -547,6 +547,7 @@ public abstract class HotSpotRuntime implements GraalCodeCacheProvider {
             assert loadHub.kind() == wordKind;
             LocationNode location = LocationNode.create(LocationNode.FINAL_LOCATION, wordKind, config.hubOffset, graph);
             ValueNode object = loadHub.object();
+            assert !object.isConstant();
             ValueNode guard = tool.createNullCheckGuard(object, StructuredGraph.INVALID_GRAPH_ID);
             ReadNode hub = graph.add(new ReadNode(object, location, StampFactory.forKind(wordKind())));
             hub.dependencies().add(guard);
@@ -575,6 +576,7 @@ public abstract class HotSpotRuntime implements GraalCodeCacheProvider {
             newObjectSnippets.lower((NewMultiArrayNode) n, tool);
         } else {
             assert false : "Node implementing Lowerable not handled: " + n;
+            throw GraalInternalError.shouldNotReachHere();
         }
     }
 

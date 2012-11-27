@@ -236,8 +236,8 @@ public class CheckCastSnippets implements SnippetsInterface {
         private final ResolvedJavaMethod secondary;
         private final ResolvedJavaMethod dynamic;
 
-        public Templates(CodeCacheProvider runtime, TargetDescription target) {
-            super(runtime, target, CheckCastSnippets.class);
+        public Templates(CodeCacheProvider runtime, Assumptions assumptions, TargetDescription target) {
+            super(runtime, assumptions, target, CheckCastSnippets.class);
             exact = snippet("checkcastExact", Object.class, Word.class, boolean.class);
             primary = snippet("checkcastPrimary", Word.class, Object.class, boolean.class, int.class);
             secondary = snippet("checkcastSecondary", Word.class, Object.class, Word[].class, boolean.class);
@@ -272,7 +272,7 @@ public class CheckCastSnippets implements SnippetsInterface {
                 arguments = arguments("hub", hub).add("object", object).add("hints", hints);
             }
 
-            SnippetTemplate template = cache.get(key);
+            SnippetTemplate template = cache.get(key, assumptions);
             Debug.log("Lowering checkcast in %s: node=%s, template=%s, arguments=%s", graph, checkcast, template, arguments);
             template.instantiate(runtime, checkcast, DEFAULT_REPLACER, arguments);
         }
@@ -289,7 +289,7 @@ public class CheckCastSnippets implements SnippetsInterface {
             Key key = new Key(dynamic).add("checkNull", checkNull);
             Arguments arguments = arguments("hub", hub).add("object", object);
 
-            SnippetTemplate template = cache.get(key);
+            SnippetTemplate template = cache.get(key, assumptions);
             Debug.log("Lowering dynamic checkcast in %s: node=%s, template=%s, arguments=%s", graph, checkcast, template, arguments);
             template.instantiate(runtime, checkcast, DEFAULT_REPLACER, arguments);
         }

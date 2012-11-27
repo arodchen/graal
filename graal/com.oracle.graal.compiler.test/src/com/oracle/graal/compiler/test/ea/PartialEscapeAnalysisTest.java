@@ -27,6 +27,7 @@ import junit.framework.Assert;
 
 import org.junit.Test;
 
+import com.oracle.graal.api.code.*;
 import com.oracle.graal.compiler.test.*;
 import com.oracle.graal.graph.*;
 import com.oracle.graal.nodes.*;
@@ -149,13 +150,15 @@ public class PartialEscapeAnalysisTest extends GraalCompilerTest {
             for (Invoke n : graph.getInvokes()) {
                 n.node().setProbability(100000);
             }
-            new InliningPhase(null, runtime(), null, null, null, getDefaultPhasePlan(), OptimisticOptimizations.ALL).apply(graph);
+            Assumptions assumptions = new Assumptions(false);
+            new InliningPhase(null, runtime(), null, assumptions, null, getDefaultPhasePlan(), OptimisticOptimizations.ALL).apply(graph);
             new DeadCodeEliminationPhase().apply(graph);
-            new CanonicalizerPhase(null, runtime(), null).apply(graph);
-            new PartialEscapeAnalysisPhase(null, runtime(), null, false).apply(graph);
+            new CanonicalizerPhase(null, runtime(), assumptions).apply(graph);
+            new PartialEscapeAnalysisPhase(null, runtime(), assumptions, false).apply(graph);
+
             new CullFrameStatesPhase().apply(graph);
             new DeadCodeEliminationPhase().apply(graph);
-            new CanonicalizerPhase(null, runtime(), null).apply(graph);
+            new CanonicalizerPhase(null, runtime(), assumptions).apply(graph);
             return graph;
         } catch (AssertionFailedError t) {
             throw new RuntimeException(t.getMessage() + "\n" + getCanonicalGraphString(graph), t);

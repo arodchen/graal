@@ -26,6 +26,7 @@ import junit.framework.*;
 
 import org.junit.Test;
 
+import com.oracle.graal.api.code.*;
 import com.oracle.graal.api.meta.*;
 import com.oracle.graal.compiler.test.*;
 import com.oracle.graal.nodes.*;
@@ -194,9 +195,10 @@ public class EscapeAnalysisTest extends GraalCompilerTest {
                 n.node().setProbability(100000);
             }
 
-            new InliningPhase(null, runtime(), null, null, null, getDefaultPhasePlan(), OptimisticOptimizations.ALL).apply(graph);
+            Assumptions assumptions = new Assumptions(false);
+            new InliningPhase(null, runtime(), null, assumptions, null, getDefaultPhasePlan(), OptimisticOptimizations.ALL).apply(graph);
             new DeadCodeEliminationPhase().apply(graph);
-            new PartialEscapeAnalysisPhase(null, runtime(), null, iterativeEscapeAnalysis).apply(graph);
+            new PartialEscapeAnalysisPhase(null, runtime(), assumptions, iterativeEscapeAnalysis).apply(graph);
             Assert.assertEquals(1, graph.getNodes(ReturnNode.class).count());
             ReturnNode returnNode = graph.getNodes(ReturnNode.class).first();
             if (expectedConstantResult != null) {
