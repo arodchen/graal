@@ -44,9 +44,15 @@
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/sweeper.hpp"
 #include "utilities/dtrace.hpp"
+#ifdef GRAAL
+#include "graal/graalCompiler.hpp"
+#endif
 #include "utilities/events.hpp"
 #ifdef COMPILER1
 #include "c1/c1_Compiler.hpp"
+#endif
+#ifdef GRAAL
+#include "graal/graalCompiler.hpp"
 #endif
 #ifdef COMPILER2
 #include "opto/c2compiler.hpp"
@@ -748,7 +754,16 @@ void CompileBroker::compilation_init() {
   // Set the interface to the current compiler(s).
   int c1_count = CompilationPolicy::policy()->compiler_count(CompLevel_simple);
   int c2_count = CompilationPolicy::policy()->compiler_count(CompLevel_full_optimization);
-#ifdef COMPILER1
+
+#ifdef GRAAL
+  GraalCompiler* graal = new GraalCompiler();
+#endif
+
+#if defined(GRAALVM)
+  _compilers[0] = graal;
+  c1_count = 0;
+  c2_count = 0;
+#elif defined(COMPILER1)
   if (c1_count > 0) {
     _compilers[0] = new Compiler();
   }
@@ -962,9 +977,9 @@ CompilerThread* CompileBroker::make_compiler_thread(const char* name, CompileQue
 // Initialize the compilation queue
 void CompileBroker::init_compiler_threads(int c1_compiler_count, int c2_compiler_count) {
   EXCEPTION_MARK;
-#if !defined(ZERO) && !defined(SHARK)
+#if !defined(ZERO) && !defined(SHARK) && !defined(GRAALVM)
   assert(c2_compiler_count > 0 || c1_compiler_count > 0, "No compilers?");
-#endif // !ZERO && !SHARK
+#endif // !ZERO && !SHARK && !GRAALVM
   if (c2_compiler_count > 0) {
     _c2_method_queue  = new CompileQueue("C2MethodQueue",  MethodCompileQueue_lock);
   }
@@ -1026,10 +1041,9 @@ bool CompileBroker::is_idle() {
         return false;
       }
     }
-
-    // No pending or active compilations.
-    return true;
   }
+  // No pending or active compilations.
+  return true;
 }
 
 
@@ -1112,6 +1126,14 @@ void CompileBroker::compile_method_base(methodHandle method,
   if (InstanceRefKlass::owns_pending_list_lock(JavaThread::current())) {
     return;
   }
+#ifdef GRAALVM
+  if (!JavaThread::current()->is_compiling()) {
+    method->set_queued_for_compilation();
+    GraalCompiler::instance()->compile_method(method, osr_bci, is_compile_blocking(method, osr_bci));
+  } else {
+    // Recursive compile request => ignore.
+  }
+#else
 
   // Outputs from the following MutexLocker block:
   CompileTask* task     = NULL;
@@ -1196,6 +1218,7 @@ void CompileBroker::compile_method_base(methodHandle method,
   if (blocking) {
     wait_for_completion(task);
   }
+#endif
 }
 
 

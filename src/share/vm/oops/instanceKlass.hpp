@@ -993,7 +993,6 @@ public:
   void print_value_on(outputStream* st) const;
 
   void oop_print_value_on(oop obj, outputStream* st);
-
 #ifndef PRODUCT
   void oop_print_on      (oop obj, outputStream* st);
 

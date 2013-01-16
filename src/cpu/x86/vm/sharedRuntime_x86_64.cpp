@@ -126,6 +126,7 @@ class RegisterSaver {
   static int rax_offset_in_bytes(void)    { return BytesPerInt * rax_off; }
   static int rdx_offset_in_bytes(void)    { return BytesPerInt * rdx_off; }
   static int rbx_offset_in_bytes(void)    { return BytesPerInt * rbx_off; }
+  static int r10_offset_in_bytes(void)    { return BytesPerInt * r10_off; }
   static int xmm0_offset_in_bytes(void)   { return BytesPerInt * xmm0_off; }
   static int return_offset_in_bytes(void) { return BytesPerInt * return_off; }
 
@@ -734,6 +735,16 @@ static void gen_i2c_adapter(MacroAssembler *masm,
   // Will jump to the compiled code just as if compiled code was doing it.
   // Pre-load the register-jump target early, to schedule it better.
   __ movptr(r11, Address(rbx, in_bytes(Method::from_compiled_offset())));
+
+#ifdef GRAAL
+  // check if this call should be routed towards a specific entry point
+  __ cmpptr(Address(r15_thread, in_bytes(JavaThread::graal_alternate_call_target_offset())), 0);
+  Label no_alternative_target;
+  __ jcc(Assembler::equal, no_alternative_target);
+  __ movptr(r11, Address(r15_thread, in_bytes(JavaThread::graal_alternate_call_target_offset())));
+  __ movptr(Address(r15_thread, in_bytes(JavaThread::graal_alternate_call_target_offset())), 0);
+  __ bind(no_alternative_target);
+#endif
 
   // Now generate the shuffle code.  Pick up all register args and move the
   // rest through the floating point stack top.
@@ -1984,6 +1995,50 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
   __ bind(hit);
 
   int vep_offset = ((intptr_t)__ pc()) - start;
+
+#ifdef GRAALVM
+  if (InlineObjectHash && (method->intrinsic_id() == vmIntrinsics::_hashCode || method->intrinsic_id() == vmIntrinsics::_identityHashCode)) {
+    // Object.hashCode can pull the hashCode from the header word
+    // instead of doing a full VM transition once it's been computed.
+    // Since hashCode is usually polymorphic at call sites we can't do
+    // this optimization at the call site without a lot of work.
+    Label slowCase;
+    Label nullCase;
+    Register result = rax;
+
+    if (method->intrinsic_id() == vmIntrinsics::_identityHashCode) {
+      __ cmpptr(receiver, 0);
+      __ jcc(Assembler::equal, nullCase);
+    }
+
+    __ movptr(result, Address(receiver, oopDesc::mark_offset_in_bytes()));
+
+    // check if locked
+    __ testptr(result, markOopDesc::unlocked_value);
+    __ jcc (Assembler::zero, slowCase);
+
+    if (UseBiasedLocking) {
+      // Check if biased and fall through to runtime if so
+      __ testptr(result, markOopDesc::biased_lock_bit_in_place);
+      __ jcc (Assembler::notZero, slowCase);
+    }
+
+    // get hash
+    __ shrptr(result, markOopDesc::hash_shift);
+    __ andptr(result, markOopDesc::hash_mask);
+    // test if hashCode exists
+    __ jcc  (Assembler::zero, slowCase);
+    __ ret(0);
+
+    if (method->intrinsic_id() == vmIntrinsics::_identityHashCode) {
+      __ bind(nullCase);
+      __ movl(result, 0);
+      __ ret(0);
+    }
+
+    __ bind (slowCase);
+  }
+#endif // GRAALVM
 
   // The instruction at the verified entry point must be 5 bytes or longer
   // because it can be patched on the fly by make_non_entrant. The stack bang
@@ -3393,6 +3448,34 @@ void SharedRuntime::generate_deopt_blob() {
   __ bind(no_pending_exception);
 #endif
 
+#ifdef GRAAL
+  __ jmp(cont);
+
+  int implicit_exception_uncommon_trap_offset = __ pc() - start;
+  __ pushptr(Address(r15_thread, in_bytes(JavaThread::ScratchA_offset())));
+  __ movptr(rscratch1, Address(r15_thread, in_bytes(JavaThread::ScratchB_offset())));
+
+  int uncommon_trap_offset = __ pc() - start;
+
+  // Save everything in sight.
+  RegisterSaver::save_live_registers(masm, 0, &frame_size_in_words);
+  // fetch_unroll_info needs to call last_java_frame()
+  __ set_last_Java_frame(noreg, noreg, NULL);
+
+  assert(r10 == rscratch1, "scratch register should be r10");
+  __ movl(c_rarg1, Address(rsp, RegisterSaver::r10_offset_in_bytes()));
+
+  __ movl(r14, (int32_t)Deoptimization::Unpack_reexecute);
+  __ mov(c_rarg0, r15_thread);
+  __ call(RuntimeAddress(CAST_FROM_FN_PTR(address, Deoptimization::uncommon_trap)));
+  oop_maps->add_gc_map( __ pc()-start, map->deep_copy());
+
+  __ reset_last_Java_frame(false, false);
+
+  Label after_fetch_unroll_info_call;
+  __ jmp(after_fetch_unroll_info_call);
+#endif // GRAAL
+
   __ bind(cont);
 
   // Call C code.  Need thread and this frame, but NOT official VM entry
@@ -3421,6 +3504,10 @@ void SharedRuntime::generate_deopt_blob() {
   oop_maps->add_gc_map(__ pc() - start, map);
 
   __ reset_last_Java_frame(false, false);
+
+#ifdef GRAAL
+  __ bind(after_fetch_unroll_info_call);
+#endif
 
   // Load UnrollBlock* into rdi
   __ mov(rdi, rax);
@@ -3591,6 +3678,10 @@ void SharedRuntime::generate_deopt_blob() {
 
   _deopt_blob = DeoptimizationBlob::create(&buffer, oop_maps, 0, exception_offset, reexecute_offset, frame_size_in_words);
   _deopt_blob->set_unpack_with_exception_in_tls_offset(exception_in_tls_offset);
+#ifdef GRAAL
+  _deopt_blob->set_uncommon_trap_offset(uncommon_trap_offset);
+  _deopt_blob->set_implicit_exception_uncommon_trap_offset(implicit_exception_uncommon_trap_offset);
+#endif
 }
 
 #ifdef COMPILER2

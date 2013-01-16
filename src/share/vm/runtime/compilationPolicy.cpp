@@ -60,7 +60,7 @@ void compilationPolicy_init() {
     break;
 
   case 1:
-#ifdef COMPILER2
+#if defined(COMPILER2)
     CompilationPolicy::set_policy(new StackWalkCompPolicy());
 #else
     Unimplemented();
@@ -80,8 +80,15 @@ void compilationPolicy_init() {
     Unimplemented();
 #endif
     break;
+  case 4:
+#if defined(GRAALVM)
+    CompilationPolicy::set_policy(new GraalCompPolicy());
+#else
+    Unimplemented();
+#endif
+    break;
   default:
-    fatal("CompilationPolicyChoice must be in the range: [0-3]");
+    fatal("CompilationPolicyChoice must be in the range: [0-4]");
   }
   CompilationPolicy::policy()->initialize();
 }
@@ -181,6 +188,7 @@ int NonTieredCompPolicy::compiler_count(CompLevel comp_level) {
 #endif
 
 #ifdef COMPILER1
+  GRAALVM_ONLY(ShouldNotReachHere();)
   if (is_c1_compile(comp_level)) {
     return _compiler_count;
   } else {
@@ -204,6 +212,7 @@ void NonTieredCompPolicy::reset_counter_for_invocation_event(methodHandle m) {
 }
 
 void NonTieredCompPolicy::reset_counter_for_back_branch_event(methodHandle m) {
+//  GRAAL_ONLY(assert(false, "unexpected"));
   // Delay next back-branch event but pump up invocation counter to triger
   // whole method compilation.
   InvocationCounter* i = m->invocation_counter();
@@ -430,9 +439,78 @@ void SimpleCompPolicy::method_back_branch_event(methodHandle m, int bci, JavaThr
     NOT_PRODUCT(trace_osr_completion(m->lookup_osr_nmethod_for(bci, comp_level, true));)
   }
 }
+
+// GraalCompPolicy - compile current method
+
+#ifdef GRAALVM
+
+void GraalCompPolicy::method_invocation_event(methodHandle m, JavaThread* thread) {
+  int hot_count = m->invocation_count();
+  jlong hot_time = m->graal_invocation_time();
+  reset_counter_for_invocation_event(m);
+
+  if (is_compilation_enabled() && can_be_compiled(m)) {
+    nmethod* nm = m->code();
+    if (nm == NULL) {
+      if (hot_count > 1) {
+        jlong current_time = os::javaTimeNanos();
+        int time_per_call = (int) ((current_time - hot_time) / hot_count);
+        m->set_graal_invocation_time(current_time);
+        if (UseNewCode) {
+          if (m->queued_for_compilation()) {
+            if (time_per_call < (m->graal_priority() / 5)) {
+              m->set_graal_priority(time_per_call);
+              m->clear_queued_for_compilation();
+            }
+          } else {
+            if (time_per_call < m->graal_priority()) {
+              m->set_graal_priority(time_per_call);
+            }
+          }
+        } else {
+          if (time_per_call < m->graal_priority()) {
+            m->set_graal_priority(time_per_call);
+          }
+        }
+      }
+     
+      if (!m->queued_for_compilation()) {
+        if (TraceCompilationPolicy) {
+          tty->print("method invocation trigger: ");
+          m->print_short_name(tty);
+          tty->print_cr(" ( interpreted " INTPTR_FORMAT ", size=%d, hotCount=%d, hotTime=" UINT64_FORMAT " ) ", (address)m(), m->code_size(), hot_count, hot_time);
+        }
+
+        assert(m->is_native() || m->method_data() != NULL, "do not compile code methods");
+        CompileBroker::compile_method(m, InvocationEntryBci, CompLevel_highest_tier, m, hot_count, "count", thread);
+      }
+    }
+  }
+}
+
+void GraalCompPolicy::method_back_branch_event(methodHandle m, int bci, JavaThread* thread) {
+  int hot_count = m->backedge_count();
+  const char* comment = "backedge_count";
+
+  if (is_compilation_enabled() && !m->is_not_osr_compilable() && can_be_compiled(m)) {
+    if (TraceCompilationPolicy) {
+      tty->print("backedge invocation trigger: ");
+      m->print_short_name(tty);
+      tty->print_cr(" ( interpreted " INTPTR_FORMAT ", size=%d, hotCount=%d ) ", (address)m(), m->code_size(), hot_count);
+    }
+
+    CompileBroker::compile_method(m, bci, CompLevel_highest_tier,
+                                  m, hot_count, comment, thread);
+    NOT_PRODUCT(trace_osr_completion(m->lookup_osr_nmethod_for(bci, CompLevel_highest_tier, true));)
+  }
+}
+
+#endif // GRAALVM
+
+
 // StackWalkCompPolicy - walk up stack to find a suitable method to compile
 
-#ifdef COMPILER2
+#if defined(COMPILER2)
 const char* StackWalkCompPolicy::_msg = NULL;
 
 

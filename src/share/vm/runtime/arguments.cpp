@@ -63,6 +63,10 @@ char**  Arguments::_jvm_flags_array             = NULL;
 int     Arguments::_num_jvm_flags               = 0;
 char**  Arguments::_jvm_args_array              = NULL;
 int     Arguments::_num_jvm_args                = 0;
+#ifdef GRAAL
+char**  Arguments::_graal_args_array              = NULL;
+int     Arguments::_num_graal_args                = 0;
+#endif
 char*  Arguments::_java_command                 = NULL;
 SystemProperty* Arguments::_system_properties   = NULL;
 const char*  Arguments::_gc_log_filename        = NULL;
@@ -100,6 +104,9 @@ SystemProperty *Arguments::_java_library_path = NULL;
 SystemProperty *Arguments::_java_home = NULL;
 SystemProperty *Arguments::_java_class_path = NULL;
 SystemProperty *Arguments::_sun_boot_class_path = NULL;
+#ifdef GRAAL
+SystemProperty *Arguments::_compiler_class_path = NULL;
+#endif
 
 char* Arguments::_meta_index_path = NULL;
 char* Arguments::_meta_index_dir = NULL;
@@ -161,6 +168,9 @@ void Arguments::init_system_properties() {
   _java_library_path = new SystemProperty("java.library.path", NULL,  true);
   _java_home =  new SystemProperty("java.home", NULL,  true);
   _sun_boot_class_path = new SystemProperty("sun.boot.class.path", NULL,  true);
+#ifdef GRAAL
+  _compiler_class_path = new SystemProperty("compiler.class.path", NULL,  true);
+#endif
 
   _java_class_path = new SystemProperty("java.class.path", "",  true);
 
@@ -172,6 +182,9 @@ void Arguments::init_system_properties() {
   PropertyList_add(&_system_properties, _java_home);
   PropertyList_add(&_system_properties, _java_class_path);
   PropertyList_add(&_system_properties, _sun_boot_class_path);
+#ifdef GRAAL
+  PropertyList_add(&_system_properties, _compiler_class_path);
+#endif
 
   // Set OS specific system properties values
   os::init_system_properties_values();
@@ -764,6 +777,11 @@ void Arguments::build_jvm_args(const char* arg) {
 void Arguments::build_jvm_flags(const char* arg) {
   add_string(&_jvm_flags_array, &_num_jvm_flags, arg);
 }
+#ifdef GRAAL
+void Arguments::add_graal_arg(const char* arg) {
+  add_string(&_graal_args_array, &_num_graal_args, arg);
+}
+#endif
 
 // utility function to return a string that concatenates all
 // strings in a given char** array
@@ -1488,7 +1506,7 @@ void Arguments::set_parallel_gc_flags() {
 
 void Arguments::set_g1_gc_flags() {
   assert(UseG1GC, "Error");
-#ifdef COMPILER1
+#if defined(COMPILER1) || defined(GRAAL)
   FastTLABRefill = false;
 #endif
   FLAG_SET_DEFAULT(ParallelGCThreads,
@@ -2028,7 +2046,39 @@ bool Arguments::check_vm_args_consistency() {
     }
 #endif
   }
+#ifdef GRAAL
+  if (UseCompressedOops) {
+    jio_fprintf(defaultStream::error_stream(),
+                    "CompressedOops are not supported in Graal at the moment\n");
+        status = false;
+  } else {
+    // This prevents the flag being set to true by set_ergonomics_flags()
+    FLAG_SET_CMDLINE(bool, UseCompressedOops, false);
+  }
 
+  if (UseCompressedKlassPointers) {
+    jio_fprintf(defaultStream::error_stream(),
+                    "UseCompressedKlassPointers are not supported in Graal at the moment\n");
+        status = false;
+  } else {
+    // This prevents the flag being set to true by set_ergonomics_flags()
+    FLAG_SET_CMDLINE(bool, UseCompressedKlassPointers, false);
+  }
+  if (UseG1GC) {
+    jio_fprintf(defaultStream::error_stream(),
+                        "G1 is not supported in Graal at the moment\n");
+        status = false;
+  } else {
+    // This prevents the flag being set to true by set_ergonomics_flags()
+    FLAG_SET_CMDLINE(bool, UseG1GC, false);
+  }
+
+  if (!ScavengeRootsInCode) {
+      warning("forcing ScavengeRootsInCode non-zero because Graal is enabled");
+      ScavengeRootsInCode = 1;
+  }
+
+#endif
   return status;
 }
 
@@ -2108,6 +2158,58 @@ Arguments::ArgsRange Arguments::parse_memory_size(const char* s,
 }
 
 // Parse JavaVMInitArgs structure
+#ifdef GRAAL
+static void prepend_to_graal_classpath(SysClassPath &cp, const char* path) {
+  cp.add_prefix(path);
+}
+
+static void prepend_to_graal_classpath(SysClassPath &cp, const char* graal_dir, const char* project) {
+  const int BUFFER_SIZE = 1024;
+  char path[BUFFER_SIZE];
+
+  const char fileSep = *os::file_separator();
+  sprintf(path, "%s%c%s%cbin", graal_dir, fileSep, project, fileSep);
+  
+  DIR* dir = os::opendir(path);
+  if (dir == NULL) {
+    jio_fprintf(defaultStream::output_stream(), "Error while starting Graal VM: The Graal class directory %s could not be opened.\n", path);
+    vm_exit(1);
+  }
+  os::closedir(dir);
+  prepend_to_graal_classpath(cp, path);
+}
+
+// Walk up the directory hierarchy starting from JAVA_HOME looking
+// for a directory named "graal". If found, then the full path to
+// this directory is returned in graal_dir.
+static bool find_graal_dir(char* graal_dir) {
+  strcpy(graal_dir, Arguments::get_java_home());
+  char* end = graal_dir + strlen(graal_dir);
+  const char fileSep = *os::file_separator();
+  while (end != graal_dir) {
+    if (fileSep == '/') 
+      strcat(graal_dir, "/graal");
+    else {
+      assert(fileSep == '\\', "unexpected separator char");
+      strcat(graal_dir, "\\graal");
+    }
+    DIR* dir = os::opendir(graal_dir);
+    if (dir != NULL) {
+      os::closedir(dir);
+      return true;
+    }
+    *end = 0;
+    while (end != graal_dir) {
+      if (*end == fileSep) {
+        *end = 0;
+        break;
+      }
+      end--;
+    }
+  }
+  return false;
+}
+#endif
 
 jint Arguments::parse_vm_init_args(const JavaVMInitArgs* args) {
   // For components of the system classpath.
@@ -2134,6 +2236,73 @@ jint Arguments::parse_vm_init_args(const JavaVMInitArgs* args) {
   if (result != JNI_OK) {
     return result;
   }
+
+#ifdef GRAAL
+    if (PrintVMOptions) {
+      tty->print_cr("Running Graal VM... ");
+    }
+
+    SysClassPath scp_compiler("");
+
+    if (GraalClassPath != NULL) {
+      prepend_to_graal_classpath(scp_compiler, GraalClassPath);
+    } else {
+      const int BUFFER_SIZE = 1024;
+      char graal_dir[BUFFER_SIZE];
+      if (!os::getenv("GRAAL", graal_dir, sizeof(graal_dir))) {
+        if (find_graal_dir(graal_dir) == false) {
+          jio_fprintf(defaultStream::output_stream(), "Error while starting Graal VM: The GRAAL environment variable needs to point to the directory containing the Graal projects.\n");
+          vm_exit(0);
+        }
+      }
+      if (PrintVMOptions) tty->print_cr("GRAAL=%s", graal_dir);
+    
+      // this declaration is checked for correctness by 'mx build' - only
+      // modify its entries, not its name or shape
+      const char* graal_projects[] = {
+  #ifdef AMD64
+          "com.oracle.graal.amd64",
+          "com.oracle.graal.asm.amd64",
+          "com.oracle.graal.lir.amd64",
+          "com.oracle.graal.compiler.amd64",
+          "com.oracle.graal.hotspot.amd64",
+  #endif
+          "com.oracle.graal.api.runtime",
+          "com.oracle.graal.api.meta",
+          "com.oracle.graal.api.code",
+          "com.oracle.graal.api.interpreter",
+          "com.oracle.graal.hotspot",
+          "com.oracle.graal.asm",
+          "com.oracle.graal.alloc",
+          "com.oracle.graal.word",
+          "com.oracle.graal.snippets",
+          "com.oracle.graal.compiler",
+          "com.oracle.graal.loop",
+          "com.oracle.graal.phases",
+          "com.oracle.graal.phases.common",
+          "com.oracle.graal.virtual",
+          "com.oracle.graal.nodes",
+          "com.oracle.graal.printer",
+          "com.oracle.graal.debug",
+          "com.oracle.graal.graph",
+          "com.oracle.graal.lir",
+          "com.oracle.graal.bytecode",
+          "com.oracle.graal.java"
+      };
+            
+      const int len = sizeof(graal_projects) / sizeof(char*);
+      for (int i = 0; i < len; i++) {
+        if (PrintVMOptions) {
+          tty->print_cr("Adding project directory %s to bootclasspath", graal_projects[i]);
+        }
+        prepend_to_graal_classpath(scp_compiler, graal_dir, graal_projects[i]);
+      }
+    }
+
+    scp_compiler.expand_endorsed();
+    Arguments::set_compilerclasspath(scp_compiler.combined_path());
+
+#endif
 
   if (AggressiveOpts) {
     // Insert alt-rt.jar between user-specified bootclasspath
@@ -2813,8 +2982,19 @@ SOLARIS_ONLY(
           return JNI_EINVAL;
         }
       }
+    }
+#ifdef GRAAL
+    else if (match_option(option, "-G:", &tail)) { // -G:XXX
+      // Option for the Graal compiler.
+      if (PrintVMOptions) {
+        tty->print_cr("Graal option %s", tail);
+      }
+      Arguments::add_graal_arg(tail);
+
     // Unknown option
-    } else if (is_bad_option(option, args->ignoreUnrecognized)) {
+    }
+#endif
+    else if (is_bad_option(option, args->ignoreUnrecognized)) {
       return JNI_ERR;
     }
   }
@@ -3238,7 +3418,7 @@ jint Arguments::parse(const JavaVMInitArgs* args) {
     set_tiered_flags();
   } else {
     // Check if the policy is valid. Policies 0 and 1 are valid for non-tiered setup.
-    if (CompilationPolicyChoice >= 2) {
+    if (CompilationPolicyChoice >= 2 && CompilationPolicyChoice < 4) {
       vm_exit_during_initialization(
         "Incompatible compilation policy selected", NULL);
     }
@@ -3278,6 +3458,9 @@ jint Arguments::parse(const JavaVMInitArgs* args) {
 #ifdef COMPILER1
       || !UseFastLocking
 #endif // COMPILER1
+#ifdef GRAAL
+      || !GraalUseFastLocking
+#endif // GRAAL
     ) {
     if (!FLAG_IS_DEFAULT(UseBiasedLocking) && UseBiasedLocking) {
       // flag set to true on command line; warn the user that they

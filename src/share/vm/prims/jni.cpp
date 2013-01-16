@@ -32,6 +32,9 @@
 #include "classfile/systemDictionary.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "interpreter/linkResolver.hpp"
+#ifdef GRAAL
+#include "graal/graalCompiler.hpp"
+#endif
 #ifndef SERIALGC
 #include "gc_implementation/g1/g1SATBCardTableModRefBS.hpp"
 #endif // SERIALGC
@@ -1315,6 +1318,7 @@ static methodHandle jni_resolve_virtual_call(Handle recv, methodHandle method, T
 }
 
 
+static bool first_time_InvokeMain = true;
 
 static void jni_invoke_static(JNIEnv *env, JavaValue* result, jobject receiver, JNICallType call_type, jmethodID method_id, JNI_ArgumentPusher *args, TRAPS) {
   methodHandle method(THREAD, Method::resolve_jmethod_id(method_id));
@@ -1323,6 +1327,8 @@ static void jni_invoke_static(JNIEnv *env, JavaValue* result, jobject receiver, 
   // the jni parser
   ResourceMark rm(THREAD);
   int number_of_parameters = method->size_of_parameters();
+
+  // Invoke the method. Result is returned as oop.
   JavaCallArguments java_args(number_of_parameters);
   args->set_java_argument_object(&java_args);
 
@@ -1330,16 +1336,23 @@ static void jni_invoke_static(JNIEnv *env, JavaValue* result, jobject receiver, 
 
   // Fill out JavaCallArguments object
   args->iterate( Fingerprinter(method).fingerprint() );
-  // Initialize result type
+  // Initialize result type (must be done after args->iterate())
   result->set_type(args->get_ret_type());
 
-  // Invoke the method. Result is returned as oop.
   JavaCalls::call(result, method, &java_args, CHECK);
 
   // Convert result
   if (result->get_type() == T_OBJECT || result->get_type() == T_ARRAY) {
     result->set_jobject(JNIHandles::make_local(env, (oop) result->get_jobject()));
   }
+
+#ifdef HIGH_LEVEL_INTERPRETER
+  if (invoked_main_method) {
+    assert(THREAD->is_Java_thread(), "other threads must not call into java");
+    JavaThread* thread = (JavaThread*)THREAD;
+    thread->set_high_level_interpreter_in_vm(false);
+  }
+#endif
 }
 
 
@@ -5140,6 +5153,11 @@ _JNI_IMPORT_OR_EXPORT_ jint JNICALL JNI_CreateJavaVM(JavaVM **vm, void **penv, v
     /* thread is thread_in_vm here */
     *vm = (JavaVM *)(&main_vm);
     *(JNIEnv**)penv = thread->jni_environment();
+
+#ifdef GRAAL
+    GraalCompiler* graal_compiler = GraalCompiler::instance();
+    graal_compiler->initialize();
+#endif
 
     // Tracks the time application was running before GC
     RuntimeService::record_application_start();

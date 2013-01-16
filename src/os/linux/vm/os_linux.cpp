@@ -3657,7 +3657,14 @@ JVM_handle_linux_signal(int signo, siginfo_t* siginfo,
 
 void signalHandler(int sig, siginfo_t* info, void* uc) {
   assert(info != NULL && uc != NULL, "it must be old kernel");
+  ResourceMark rm;
+  if (TraceSignals) {
+    tty->print_cr(err_msg("signal received: code=%d errno=%d signo=%d thread=%s address=%x", info->si_code, info->si_errno, info->si_signo, Thread::current()->name(), info->si_addr));
+  }
   JVM_handle_linux_signal(sig, info, uc, true);
+  if (TraceSignals) {
+    tty->print_cr("signal handled");
+  }
 }
 
 
@@ -4440,9 +4447,9 @@ bool os::find(address addr, outputStream* st) {
 // able to use structured exception handling (thread-local exception filters)
 // on, e.g., Win32.
 void
-os::os_exception_wrapper(java_call_t f, JavaValue* value, methodHandle* method,
+os::os_exception_wrapper(java_call_t f, JavaValue* value, methodHandle* method, nmethod* nm,
                          JavaCallArguments* args, Thread* thread) {
-  f(value, method, args, thread);
+  f(value, method, nm, args, thread);
 }
 
 void os::print_statistics() {

@@ -2177,8 +2177,8 @@ void InstanceKlass::clean_implementors_list(BoolObjectClosure* is_alive) {
 }
 
 void InstanceKlass::clean_method_data(BoolObjectClosure* is_alive) {
-#ifdef COMPILER2
-  // Currently only used by C2.
+#if defined(COMPILER2) || defined(GRAAL)
+   // Currently only used by C2 and Graal
   for (int m = 0; m < methods()->length(); m++) {
     MethodData* mdo = methods()->at(m)->method_data();
     if (mdo != NULL) {
@@ -2911,7 +2911,7 @@ void InstanceKlass::oop_print_on(oop obj, outputStream* st) {
   }
 }
 
-#endif //PRODUCT
+#endif
 
 void InstanceKlass::oop_print_value_on(oop obj, outputStream* st) {
   st->print("a ");

@@ -127,14 +127,14 @@ void DebugInformationRecorder::add_oopmap(int pc_offset, OopMap* map) {
   _oopmaps->add_gc_map(pc_offset, map);
 }
 
-void DebugInformationRecorder::add_safepoint(int pc_offset, OopMap* map) {
+void DebugInformationRecorder::add_safepoint(int pc_offset, jlong leaf_graph_id, OopMap* map) {
   assert(!_oop_recorder->is_complete(), "not frozen yet");
   // Store the new safepoint
 
   // Add the oop map
   add_oopmap(pc_offset, map);
 
-  add_new_pc_offset(pc_offset);
+  add_new_pc_offset(pc_offset, leaf_graph_id);
 
   assert(_recording_state == rs_null, "nesting of recording calls");
   debug_only(_recording_state = rs_safepoint);
@@ -150,7 +150,7 @@ void DebugInformationRecorder::add_non_safepoint(int pc_offset) {
   debug_only(_recording_state = rs_non_safepoint);
 }
 
-void DebugInformationRecorder::add_new_pc_offset(int pc_offset) {
+void DebugInformationRecorder::add_new_pc_offset(int pc_offset, jlong leaf_graph_id) {
   assert(_pcs_length == 0 || last_pc()->pc_offset() < pc_offset,
          "must specify a new, larger pc offset");
 
@@ -168,7 +168,7 @@ void DebugInformationRecorder::add_new_pc_offset(int pc_offset) {
   assert(_pcs_size > _pcs_length, "There must be room for after expanding");
 
   _pcs[_pcs_length++] = PcDesc(pc_offset, DebugInformationRecorder::serialized_null,
-                               DebugInformationRecorder::serialized_null);
+                               DebugInformationRecorder::serialized_null, leaf_graph_id);
 }
 
 
@@ -213,6 +213,29 @@ int DebugInformationRecorder::serialize_scope_values(GrowableArray<ScopeValue*>*
   return result;
 }
 
+#ifdef GRAAL
+
+int DebugInformationRecorder::serialize_deferred_writes(GrowableArray<DeferredWriteValue*>* deferred_writes) {
+  if (deferred_writes == NULL || deferred_writes->is_empty()) return DebugInformationRecorder::serialized_null;
+  assert(_recording_state == rs_safepoint, "must be recording a safepoint");
+  int result = stream()->position();
+  assert(result != serialized_null, "sanity");
+  stream()->write_int(deferred_writes->length());
+  for (int index = 0; index < deferred_writes->length(); index++) {
+    deferred_writes->at(index)->write_on(stream());
+  }
+
+  // (See comment below on DebugInformationRecorder::describe_scope.)
+  int shared_result = find_sharable_decode_offset(result);
+  if (shared_result != serialized_null) {
+    stream()->set_position(result);
+    result = shared_result;
+  }
+
+  return result;
+}
+
+#endif // GRAAL
 
 #ifndef PRODUCT
 // These variables are put into one block to reduce relocations
@@ -280,14 +303,20 @@ int DebugInformationRecorder::find_sharable_decode_offset(int stream_offset) {
 // must call add_safepoint before: it sets PcDesc and this routine uses
 // the last PcDesc set
 void DebugInformationRecorder::describe_scope(int         pc_offset,
+                                              methodHandle methodH,
                                               ciMethod*   method,
                                               int         bci,
                                               bool        reexecute,
+                                              bool        rethrow_exception,
                                               bool        is_method_handle_invoke,
                                               bool        return_oop,
                                               DebugToken* locals,
                                               DebugToken* expressions,
-                                              DebugToken* monitors) {
+                                              DebugToken* monitors
+#ifdef GRAAL
+                                              , DebugToken* deferred_writes
+#endif // GRAAL
+                                              ) {
   assert(_recording_state != rs_null, "nesting of recording calls");
   PcDesc* last_pd = last_pc();
   assert(last_pd->pc_offset() == pc_offset, "must be last pc");
@@ -298,6 +327,7 @@ void DebugInformationRecorder::describe_scope(int         pc_offset,
 
   // Record flags into pcDesc.
   last_pd->set_should_reexecute(reexecute);
+  last_pd->set_rethrow_exception(rethrow_exception);
   last_pd->set_is_method_handle_invoke(is_method_handle_invoke);
   last_pd->set_return_oop(return_oop);
 
@@ -305,7 +335,14 @@ void DebugInformationRecorder::describe_scope(int         pc_offset,
   stream()->write_int(sender_stream_offset);
 
   // serialize scope
-  Metadata* method_enc = (method == NULL)? NULL: method->constant_encoding();
+  Metadata* method_enc;
+  if (method != NULL) {
+    method_enc = method->constant_encoding();
+  } else if (methodH.not_null()) {
+    method_enc = methodH();
+  } else {
+    method_enc = NULL;
+  }
   stream()->write_int(oop_recorder()->find_index(method_enc));
   stream()->write_bci(bci);
   assert(method == NULL ||
@@ -318,6 +355,9 @@ void DebugInformationRecorder::describe_scope(int         pc_offset,
   stream()->write_int((intptr_t) locals);
   stream()->write_int((intptr_t) expressions);
   stream()->write_int((intptr_t) monitors);
+#ifdef GRAAL
+  stream()->write_int((intptr_t) deferred_writes);
+#endif // GRAAL
 
   // Here's a tricky bit.  We just wrote some bytes.
   // Wouldn't it be nice to find that we had already
@@ -399,6 +439,14 @@ DebugToken* DebugInformationRecorder::create_monitor_values(GrowableArray<Monito
   return (DebugToken*) (intptr_t) serialize_monitor_values(monitors);
 }
 
+#ifdef GRAAL
+
+DebugToken* DebugInformationRecorder::create_deferred_writes(GrowableArray<DeferredWriteValue*>* deferred_writes) {
+  assert(!recorders_frozen(), "not frozen yet");
+  return (DebugToken*) (intptr_t) serialize_deferred_writes(deferred_writes);
+}
+
+#endif // GRAAL
 
 int DebugInformationRecorder::data_size() {
   debug_only(mark_recorders_frozen());  // mark it "frozen" for asserts

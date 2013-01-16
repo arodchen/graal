@@ -455,6 +455,14 @@ int MethodData::compute_data_size(BytecodeStream* stream) {
   return DataLayout::compute_size_in_bytes(cell_count);
 }
 
+#ifdef GRAALVM
+int MethodData::compute_extra_data_count(int data_size, int empty_bc_count) {
+  if (!ProfileTraps) return 0;
+
+  // Assume that up to 30% of the possibly trapping BCIs with no MDP will need to allocate one.
+  return MIN2(empty_bc_count, MAX2(4, (empty_bc_count * 30) / 100));
+}
+#else
 int MethodData::compute_extra_data_count(int data_size, int empty_bc_count) {
   if (ProfileTraps) {
     // Assume that up to 3% of BCIs with no MDP will need to allocate one.
@@ -471,6 +479,7 @@ int MethodData::compute_extra_data_count(int data_size, int empty_bc_count) {
     return 0;
   }
 }
+#endif
 
 // Compute the size of the MethodData* necessary to store
 // profiling information about a given method.  Size is in bytes.
@@ -482,7 +491,8 @@ int MethodData::compute_allocation_size_in_bytes(methodHandle method) {
   while ((c = stream.next()) >= 0) {
     int size_in_bytes = compute_data_size(&stream);
     data_size += size_in_bytes;
-    if (size_in_bytes == 0)  empty_bc_count += 1;
+
+    if (is_empty_data(size_in_bytes, c)) empty_bc_count++;
   }
   int object_size = in_bytes(data_offset()) + data_size;
 
@@ -490,9 +500,11 @@ int MethodData::compute_allocation_size_in_bytes(methodHandle method) {
   int extra_data_count = compute_extra_data_count(data_size, empty_bc_count);
   object_size += extra_data_count * DataLayout::compute_size_in_bytes(0);
 
+#ifndef GRAALVM
   // Add a cell to record information about modified arguments.
   int arg_size = method->size_of_parameters();
   object_size += DataLayout::compute_size_in_bytes(arg_size+1);
+#endif
   return object_size;
 }
 
@@ -681,7 +693,8 @@ MethodData::MethodData(methodHandle method, int size, TRAPS) {
   while ((c = stream.next()) >= 0) {
     int size_in_bytes = initialize_data(&stream, data_size);
     data_size += size_in_bytes;
-    if (size_in_bytes == 0)  empty_bc_count += 1;
+
+    if (is_empty_data(size_in_bytes, c)) empty_bc_count++;
   }
   _data_size = data_size;
   int object_size = in_bytes(data_offset()) + data_size;
@@ -689,7 +702,9 @@ MethodData::MethodData(methodHandle method, int size, TRAPS) {
   // Add some extra DataLayout cells (at least one) to track stray traps.
   int extra_data_count = compute_extra_data_count(data_size, empty_bc_count);
   int extra_size = extra_data_count * DataLayout::compute_size_in_bytes(0);
+  object_size += extra_size;
 
+#ifndef GRAALVM
   // Add a cell to record information about modified arguments.
   // Set up _args_modified array after traps cells so that
   // the code for traps cells works.
@@ -698,7 +713,8 @@ MethodData::MethodData(methodHandle method, int size, TRAPS) {
   int arg_size = method->size_of_parameters();
   dp->initialize(DataLayout::arg_info_data_tag, 0, arg_size+1);
 
-  object_size += extra_size + DataLayout::compute_size_in_bytes(arg_size+1);
+  object_size += DataLayout::compute_size_in_bytes(arg_size+1);
+#endif
 
   // Set an initial hint. Don't use set_hint_di() because
   // first_di() may be out of bounds if data_size is 0.
@@ -709,6 +725,14 @@ MethodData::MethodData(methodHandle method, int size, TRAPS) {
   post_initialize(&stream);
 
   set_size(object_size);
+}
+
+bool MethodData::is_empty_data(int size_in_bytes, Bytecodes::Code code) {
+#ifdef GRAALVM
+  return size_in_bytes == 0 && Bytecodes::can_trap(code);
+#else
+  return size_in_bytes == 0;
+#endif
 }
 
 // Get a measure of how much mileage the method has on it.
@@ -733,6 +757,13 @@ int MethodData::mileage_of(Method* method) {
 
 bool MethodData::is_mature() const {
   return CompilationPolicy::policy()->is_mature(_method);
+}
+
+void MethodData::inc_decompile_count() {
+  _nof_decompiles += 1;
+  if (decompile_count() > (uint)PerMethodRecompilationCutoff) {
+    method()->set_not_compilable(CompLevel_full_optimization);
+  }
 }
 
 // Translate a bci to its corresponding data index (di).

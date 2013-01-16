@@ -214,6 +214,9 @@ const char* InlineTree::should_not_inline(ciMethod *callee_method, ciMethod* cal
     // ignore heuristic controls on inlining
     return NULL;
   }
+  if (callee_method->should_not_inline()) {
+    return "disallowed by CompilerOracle";
+  }
 
   // Now perform checks which are heuristic
 
