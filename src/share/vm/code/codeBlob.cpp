@@ -39,6 +39,7 @@
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/vframe.hpp"
 #include "services/memoryService.hpp"
+#include "utilities/machineCodePrinter.hpp"
 #ifdef TARGET_ARCH_x86
 # include "nativeInst_x86.hpp"
 #endif
@@ -133,10 +134,11 @@ CodeBlob::CodeBlob(
   cb->copy_code_and_locs_to(this);
   set_oop_maps(oop_maps);
   _frame_size = frame_size;
-#ifdef COMPILER1
+#if defined(COMPILER1) || defined(GRAAL)
+
   // probably wrong for tiered
   assert(_frame_size >= -1, "must use frame size or -1 for runtime stubs");
-#endif // COMPILER1
+#endif // COMPILER1 || GRAAL
 }
 
 
@@ -343,6 +345,10 @@ RuntimeStub* RuntimeStub::new_runtime_stub(const char* stub_name,
 
   trace_new_stub(stub, "RuntimeStub - ", stub_name);
 
+  if (PrintMachineCodeToFile) {
+    MachineCodePrinter::print(stub);
+  }
+
   return stub;
 }
 
@@ -378,9 +384,7 @@ DeoptimizationBlob::DeoptimizationBlob(
   _unpack_offset           = unpack_offset;
   _unpack_with_exception   = unpack_with_exception_offset;
   _unpack_with_reexecution = unpack_with_reexecution_offset;
-#ifdef COMPILER1
   _unpack_with_exception_in_tls   = -1;
-#endif
 }
 
 

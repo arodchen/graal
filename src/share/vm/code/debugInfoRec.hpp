@@ -82,7 +82,7 @@ class DebugInformationRecorder: public ResourceObj {
   void add_oopmap(int pc_offset, OopMap* map);
 
   // adds a jvm mapping at pc-offset, for a safepoint only
-  void add_safepoint(int pc_offset, OopMap* map);
+  void add_safepoint(int pc_offset, jlong leaf_graph_id, OopMap* map);
 
   // adds a jvm mapping at pc-offset, for a non-safepoint (profile point)
   void add_non_safepoint(int pc_offset);
@@ -98,14 +98,20 @@ class DebugInformationRecorder: public ResourceObj {
   // by add_non_safepoint, and the locals, expressions, and monitors
   // must all be null.
   void describe_scope(int         pc_offset,
+                      methodHandle methodH,
                       ciMethod*   method,
                       int         bci,
                       bool        reexecute,
+                      bool        rethrow_exception = false,
                       bool        is_method_handle_invoke = false,
                       bool        return_oop = false,
                       DebugToken* locals      = NULL,
                       DebugToken* expressions = NULL,
-                      DebugToken* monitors    = NULL);
+                      DebugToken* monitors    = NULL
+#ifdef GRAAL
+                      , DebugToken* deferred_writes = NULL
+#endif // GRAAL
+                      );
 
 
   void dump_object_pool(GrowableArray<ScopeValue*>* objects);
@@ -118,6 +124,9 @@ class DebugInformationRecorder: public ResourceObj {
   // helper fuctions for describe_scope to enable sharing
   DebugToken* create_scope_values(GrowableArray<ScopeValue*>* values);
   DebugToken* create_monitor_values(GrowableArray<MonitorValue*>* monitors);
+#ifdef GRAAL
+  DebugToken* create_deferred_writes(GrowableArray<DeferredWriteValue*>* deferred_writes);
+#endif // GRAAL
 
   // returns the size of the generated scopeDescs.
   int data_size();
@@ -187,11 +196,14 @@ class DebugInformationRecorder: public ResourceObj {
     guarantee(_pcs_length > 1, "a safepoint must be declared already");
     return &_pcs[_pcs_length-2];
   }
-  void add_new_pc_offset(int pc_offset);
+  void add_new_pc_offset(int pc_offset, jlong leaf_graph_id = -1);
   void end_scopes(int pc_offset, bool is_safepoint);
 
   int  serialize_monitor_values(GrowableArray<MonitorValue*>* monitors);
   int  serialize_scope_values(GrowableArray<ScopeValue*>* values);
+#ifdef GRAAL
+  int serialize_deferred_writes(GrowableArray<DeferredWriteValue*>* deferred_writes);
+#endif // GRAAL
   int  find_sharable_decode_offset(int stream_offset);
 
 #ifndef PRODUCT

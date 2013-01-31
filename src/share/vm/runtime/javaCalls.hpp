@@ -148,6 +148,12 @@ class JavaCallArguments : public StackObj {
   inline void push_float(float f)   { _is_oop[_size] = false;
                                JNITypes::put_float(f, _value, _size); }
 
+  inline oop* get_raw_oop(int& pos)   { return (oop*)JNITypes::get_obj(_value, pos); }
+  inline jint get_int(int& pos)       { return JNITypes::get_int(_value, pos); }
+  inline jdouble get_double(int& pos) { return JNITypes::get_double(_value, pos); }
+  inline jlong get_long(int& pos)     { return JNITypes::get_long(_value, pos); }
+  inline jfloat get_float(int& pos)   { return JNITypes::get_float(_value, pos); }
+
   // receiver
   Handle receiver() {
     assert(_size > 0, "must at least be one argument");
@@ -179,8 +185,8 @@ class JavaCallArguments : public StackObj {
 //
 
 class JavaCalls: AllStatic {
-  static void call_helper(JavaValue* result, methodHandle* method, JavaCallArguments* args, TRAPS);
- public:
+  static void call_helper(JavaValue* result, methodHandle* method, nmethod* nm, JavaCallArguments* args, TRAPS);
+public:
   // Optimized Constuctor call
   static void call_default_constructor(JavaThread* thread, methodHandle method, Handle receiver, TRAPS);
 
@@ -192,6 +198,12 @@ class JavaCalls: AllStatic {
   static void call_special(JavaValue* result, Handle receiver, KlassHandle klass, Symbol* name, Symbol* signature, TRAPS); // No args
   static void call_special(JavaValue* result, Handle receiver, KlassHandle klass, Symbol* name, Symbol* signature, Handle arg1, TRAPS);
   static void call_special(JavaValue* result, Handle receiver, KlassHandle klass, Symbol* name, Symbol* signature, Handle arg1, Handle arg2, TRAPS);
+
+  // interface call
+  // ------------
+
+  // The receiver must be first oop in argument list
+  static void call_interface(JavaValue* result, KlassHandle spec_klass, Symbol* name, Symbol* signature, JavaCallArguments* args, TRAPS);
 
   // virtual call
   // ------------
@@ -213,6 +225,7 @@ class JavaCalls: AllStatic {
 
   // Low-level interface
   static void call(JavaValue* result, methodHandle method, JavaCallArguments* args, TRAPS);
+  static void call(JavaValue* result, methodHandle method, nmethod* nm, JavaCallArguments* args, TRAPS);
 };
 
 #endif // SHARE_VM_RUNTIME_JAVACALLS_HPP

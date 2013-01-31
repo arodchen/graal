@@ -814,7 +814,7 @@ void Compile::Process_OopMap_Node(MachNode *mach, int current_offset) {
   // Add the safepoint in the DebugInfoRecorder
   if( !mach->is_MachCall() ) {
     mcall = NULL;
-    debug_info()->add_safepoint(safepoint_pc_offset, sfn->_oop_map);
+    debug_info()->add_safepoint(safepoint_pc_offset, -1, sfn->_oop_map);
   } else {
     mcall = mach->as_MachCall();
 
@@ -832,7 +832,7 @@ void Compile::Process_OopMap_Node(MachNode *mach, int current_offset) {
       return_oop = true;
     }
     safepoint_pc_offset += mcall->ret_addr_offset();
-    debug_info()->add_safepoint(safepoint_pc_offset, mcall->_oop_map);
+    debug_info()->add_safepoint(safepoint_pc_offset, -1, mcall->_oop_map);
   }
 
   // Loop over the JVMState list to add scope information
@@ -943,7 +943,9 @@ void Compile::Process_OopMap_Node(MachNode *mach, int current_offset) {
     assert(jvms->bci() >= InvocationEntryBci && jvms->bci() <= 0x10000, "must be a valid or entry BCI");
     assert(!jvms->should_reexecute() || depth == max_depth, "reexecute allowed only for the youngest");
     // Now we can describe the scope.
-    debug_info()->describe_scope(safepoint_pc_offset, scope_method, jvms->bci(), jvms->should_reexecute(), is_method_handle_invoke, return_oop, locvals, expvals, monvals);
+    methodHandle null_mh;
+    bool rethrow_exception = false;
+    debug_info()->describe_scope(safepoint_pc_offset, null_mh, scope_method, jvms->bci(), jvms->should_reexecute(), rethrow_exception, is_method_handle_invoke, return_oop, locvals, expvals, monvals);
   } // End jvms loop
 
   // Mark the end of the scope set.
@@ -1026,7 +1028,8 @@ void NonSafepointEmitter::emit_non_safepoint() {
     JVMState* jvms = youngest_jvms->of_depth(depth);
     ciMethod* method = jvms->has_method() ? jvms->method() : NULL;
     assert(!jvms->should_reexecute() || depth==max_depth, "reexecute allowed only for the youngest");
-    debug_info->describe_scope(pc_offset, method, jvms->bci(), jvms->should_reexecute());
+    methodHandle null_mh;
+    debug_info->describe_scope(pc_offset, null_mh, method, jvms->bci(), jvms->should_reexecute());
   }
 
   // Mark the end of the scope set.

@@ -625,7 +625,14 @@ public:
 class ReceiverTypeData : public CounterData {
 protected:
   enum {
+#ifdef GRAAL
+    // Graal is interested in knowing the percentage of type checks
+    // involving a type not explicitly in the profile
+    nonprofiled_receiver_count_off_set = counter_cell_count,
+    receiver0_offset,
+#else
     receiver0_offset = counter_cell_count,
+#endif
     count0_offset,
     receiver_type_row_cell_count = (count0_offset + 1) - receiver0_offset
   };
@@ -639,7 +646,7 @@ public:
   virtual bool is_ReceiverTypeData() { return true; }
 
   static int static_cell_count() {
-    return counter_cell_count + (uint) TypeProfileWidth * receiver_type_row_cell_count;
+    return counter_cell_count + (uint) TypeProfileWidth * receiver_type_row_cell_count GRAAL_ONLY(+ 1);
   }
 
   virtual int cell_count() {
@@ -710,6 +717,11 @@ public:
   static ByteSize receiver_count_offset(uint row) {
     return cell_offset(receiver_count_cell_index(row));
   }
+#ifdef GRAAL
+  static ByteSize nonprofiled_receiver_count_offset() {
+    return cell_offset(nonprofiled_receiver_count_off_set);
+  }
+#endif
   static ByteSize receiver_type_data_size() {
     return cell_offset(static_cell_count());
   }
@@ -1346,6 +1358,7 @@ public:
 
   bool is_mature() const;  // consult mileage and ProfileMaturityPercentage
   static int mileage_of(Method* m);
+  static bool is_empty_data(int size, Bytecodes::Code code);
 
   // Support for interprocedural escape analysis, from Thomas Kotzmann.
   enum EscapeFlag {
@@ -1436,17 +1449,13 @@ public:
   uint inc_trap_count(int reason) {
     // Count another trap, anywhere in this method.
     assert(reason >= 0, "must be single trap");
-    if ((uint)reason < _trap_hist_limit) {
-      uint cnt1 = 1 + _trap_hist._array[reason];
-      if ((cnt1 & _trap_hist_mask) != 0) {  // if no counter overflow...
-        _trap_hist._array[reason] = cnt1;
-        return cnt1;
-      } else {
-        return _trap_hist_mask + (++_nof_overflow_traps);
-      }
+    assert((uint)reason < _trap_hist_limit, "oob");
+    uint cnt1 = 1 + _trap_hist._array[reason];
+    if ((cnt1 & _trap_hist_mask) != 0) {  // if no counter overflow...
+      _trap_hist._array[reason] = cnt1;
+      return cnt1;
     } else {
-      // Could not represent the count in the histogram.
-      return (++_nof_overflow_traps);
+      return _trap_hist_mask + (++_nof_overflow_traps);
     }
   }
 
@@ -1462,16 +1471,15 @@ public:
   uint decompile_count() const {
     return _nof_decompiles;
   }
-  void inc_decompile_count() {
-    _nof_decompiles += 1;
-    if (decompile_count() > (uint)PerMethodRecompilationCutoff) {
-      method()->set_not_compilable(CompLevel_full_optimization);
-    }
-  }
+  void inc_decompile_count();
 
   // Support for code generation
   static ByteSize data_offset() {
     return byte_offset_of(MethodData, _data[0]);
+  }
+
+  static ByteSize trap_history_offset() {
+    return byte_offset_of(MethodData, _trap_hist._array);
   }
 
   static ByteSize invocation_counter_offset() {

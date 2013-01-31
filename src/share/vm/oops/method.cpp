@@ -53,6 +53,9 @@
 #include "runtime/signature.hpp"
 #include "utilities/quickSort.hpp"
 #include "utilities/xmlstream.hpp"
+#ifdef GRAAL
+#include "graal/graalJavaAccess.hpp"
+#endif
 
 
 // Implementation of Method
@@ -121,6 +124,11 @@ Method::Method(ConstMethod* xconst,
   invocation_counter()->init();
   backedge_counter()->init();
   clear_number_of_breakpoints();
+
+#ifdef GRAAL
+  set_graal_invocation_time(0L);
+  set_graal_priority(0);
+#endif
 
 #ifdef TIERED
   set_rate(0);
@@ -718,6 +726,7 @@ void Method::print_made_not_compilable(int comp_level, bool is_osr, bool report)
     tty->cr();
   }
   if ((TraceDeoptimization || LogCompilation) && (xtty != NULL)) {
+    ResourceMark rm;
     ttyLocker ttyl;
     xtty->begin_elem("make_not_%scompilable thread='" UINTX_FORMAT "'",
                      is_osr ? "osr_" : "", os::current_thread_id());
@@ -1970,3 +1979,16 @@ void Method::verify_on(outputStream* st) {
   guarantee(md == NULL ||
       md->is_methodData(), "should be method data");
 }
+
+#ifdef GRAAL
+void DebugScopedMethod::print_on(outputStream* st) {
+  if (_method != NULL) {
+    st->print("Method@%p", _method);
+    char holder[O_BUFLEN];
+    char nameAndSig[O_BUFLEN];
+    _method->method_holder()->name()->as_C_string(holder, O_BUFLEN);
+    _method->name_and_sig_as_C_string(nameAndSig, O_BUFLEN);
+    st->print(" - %s::%s", holder, nameAndSig);
+  }
+}
+#endif

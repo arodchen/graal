@@ -38,11 +38,13 @@ class PcDesc VALUE_OBJ_CLASS_SPEC {
   int _pc_offset;           // offset from start of nmethod
   int _scope_decode_offset; // offset for scope in nmethod
   int _obj_decode_offset;
+  GRAAL_ONLY(jlong _leaf_graph_id;)
 
   enum {
     PCDESC_reexecute               = 1 << 0,
     PCDESC_is_method_handle_invoke = 1 << 1,
-    PCDESC_return_oop              = 1 << 2
+    PCDESC_return_oop              = 1 << 2,
+    PCDESC_rethrow_exception       = 1 << 3
   };
 
   int _flags;
@@ -55,6 +57,7 @@ class PcDesc VALUE_OBJ_CLASS_SPEC {
   int pc_offset() const           { return _pc_offset;   }
   int scope_decode_offset() const { return _scope_decode_offset; }
   int obj_decode_offset() const   { return _obj_decode_offset; }
+  jlong leaf_graph_id() const     { return GRAAL_ONLY(_leaf_graph_id) NOT_GRAAL(-1); }
 
   void set_pc_offset(int x)           { _pc_offset           = x; }
   void set_scope_decode_offset(int x) { _scope_decode_offset = x; }
@@ -62,7 +65,7 @@ class PcDesc VALUE_OBJ_CLASS_SPEC {
 
   // Constructor (only used for static in nmethod.cpp)
   // Also used by ScopeDesc::sender()]
-  PcDesc(int pc_offset, int scope_decode_offset, int obj_decode_offset);
+  PcDesc(int pc_offset, int scope_decode_offset, int obj_decode_offset, jlong leaf_graph_id);
 
   enum {
     // upper and lower exclusive limits real offsets:
@@ -71,6 +74,8 @@ class PcDesc VALUE_OBJ_CLASS_SPEC {
   };
 
   // Flags
+  bool     rethrow_exception()              const { return (_flags & PCDESC_rethrow_exception) != 0; }
+  void set_rethrow_exception(bool z)              { set_flag(PCDESC_rethrow_exception, z);    }
   bool     should_reexecute()              const { return (_flags & PCDESC_reexecute) != 0; }
   void set_should_reexecute(bool z)              { set_flag(PCDESC_reexecute, z); }
 
@@ -78,7 +83,9 @@ class PcDesc VALUE_OBJ_CLASS_SPEC {
   bool is_same_info(const PcDesc* pd) {
     return _scope_decode_offset == pd->_scope_decode_offset &&
       _obj_decode_offset == pd->_obj_decode_offset &&
-      _flags == pd->_flags;
+      _flags == pd->_flags
+      GRAAL_ONLY(&& _leaf_graph_id == pd->_leaf_graph_id)
+      ;
   }
 
   bool     is_method_handle_invoke()       const { return (_flags & PCDESC_is_method_handle_invoke) != 0;     }

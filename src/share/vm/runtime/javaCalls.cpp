@@ -39,7 +39,21 @@
 #include "runtime/mutexLocker.hpp"
 #include "runtime/signature.hpp"
 #include "runtime/stubRoutines.hpp"
-#include "runtime/thread.inline.hpp"
+#ifdef HIGH_LEVEL_INTERPRETER
+# include "graal/graalVMToInterpreter.hpp"
+#endif
+#ifdef TARGET_OS_FAMILY_linux
+# include "thread_linux.inline.hpp"
+#endif
+#ifdef TARGET_OS_FAMILY_solaris
+# include "thread_solaris.inline.hpp"
+#endif
+#ifdef TARGET_OS_FAMILY_windows
+# include "thread_windows.inline.hpp"
+#endif
+#ifdef TARGET_OS_FAMILY_bsd
+# include "thread_bsd.inline.hpp"
+#endif
 
 // -----------------------------------------------------
 // Implementation of JavaCallWrapper
@@ -188,6 +202,23 @@ void JavaCalls::call_default_constructor(JavaThread* thread, methodHandle method
   }
 }
 
+// ============ Interface calls ============
+
+void JavaCalls::call_interface(JavaValue* result, KlassHandle spec_klass, Symbol* name, Symbol* signature, JavaCallArguments* args, TRAPS) {
+  CallInfo callinfo;
+  Handle receiver = args->receiver();
+  KlassHandle recvrKlass(THREAD, receiver.is_null() ? (Klass*)NULL : receiver->klass());
+  LinkResolver::resolve_interface_call(
+          callinfo, receiver, recvrKlass, spec_klass, name, signature,
+          KlassHandle(), false, true, CHECK);
+  methodHandle method = callinfo.selected_method();
+  assert(method.not_null(), "should have thrown exception");
+
+  // Invoke the method
+  JavaCalls::call(result, method, args, CHECK);
+}
+
+
 // ============ Virtual calls ============
 
 void JavaCalls::call_virtual(JavaValue* result, KlassHandle spec_klass, Symbol* name, Symbol* signature, JavaCallArguments* args, TRAPS) {
@@ -304,10 +335,19 @@ void JavaCalls::call(JavaValue* result, methodHandle method, JavaCallArguments* 
   assert(THREAD->is_Java_thread(), "only JavaThreads can make JavaCalls");
   // Need to wrap each and everytime, since there might be native code down the
   // stack that has installed its own exception handlers
-  os::os_exception_wrapper(call_helper, result, &method, args, THREAD);
+  os::os_exception_wrapper(call_helper, result, &method, NULL, args, THREAD);
 }
 
-void JavaCalls::call_helper(JavaValue* result, methodHandle* m, JavaCallArguments* args, TRAPS) {
+void JavaCalls::call(JavaValue* result, methodHandle method, nmethod* nm, JavaCallArguments* args, TRAPS) {
+  // Check if we need to wrap a potential OS exception handler around thread
+  // This is used for e.g. Win32 structured exception handlers
+  assert(THREAD->is_Java_thread(), "only JavaThreads can make JavaCalls");
+  // Need to wrap each and everytime, since there might be native code down the
+  // stack that has installed its own exception handlers
+  os::os_exception_wrapper(call_helper, result, &method, nm, args, THREAD);
+}
+
+void JavaCalls::call_helper(JavaValue* result, methodHandle* m, nmethod* nm, JavaCallArguments* args, TRAPS) {
   methodHandle method = *m;
   JavaThread* thread = (JavaThread*)THREAD;
   assert(thread->is_Java_thread(), "must be called by a java thread");
@@ -386,6 +426,26 @@ void JavaCalls::call_helper(JavaValue* result, methodHandle* m, JavaCallArgument
     os::bang_stack_shadow_pages();
   }
 
+  if (nm != NULL) {
+#ifdef GRAAL
+    if (nm->is_alive()) {
+      ((JavaThread*) THREAD)->set_graal_alternate_call_target(nm->verified_entry_point());
+      entry_point = method->adapter()->get_i2c_entry();
+    } else {
+      THROW(vmSymbols::MethodInvalidatedException());
+    }
+#else
+    ShouldNotReachHere();
+#endif
+  }
+  
+#ifdef HIGH_LEVEL_INTERPRETER
+  if (thread->high_level_interpreter_in_vm() && !method->is_native() && Interpreter::contains(entry_point)) {
+    assert(nm == NULL || !nm->is_alive(), "otherwise nm should be invoked");
+    VMToInterpreter::execute(result, m, args, result->get_type(), thread);
+    oop_result_flag = false; // result already holds the correct value
+  } else
+#endif
   // do call
   { JavaCallWrapper link(method, receiver, result, CHECK);
     { HandleMark hm(thread);  // HandleMark used by HandleMarkCleaner
@@ -420,7 +480,6 @@ void JavaCalls::call_helper(JavaValue* result, methodHandle* m, JavaCallArgument
     thread->set_vm_result(NULL);
   }
 }
-
 
 //--------------------------------------------------------------------------------------
 // Implementation of JavaCallArguments

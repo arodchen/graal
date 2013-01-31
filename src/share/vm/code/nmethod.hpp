@@ -116,6 +116,11 @@ class nmethod : public CodeBlob {
   int       _entry_bci;        // != InvocationEntryBci if this nmethod is an on-stack replacement method
   jmethodID _jmethod_id;       // Cache of method()->jmethod_id()
 
+#ifdef GRAAL
+  // Needed to keep nmethods alive that are not the default nmethod for the associated Method.
+  oop       _graal_installed_code;
+#endif
+
   // To support simple linked-list chaining of nmethods:
   nmethod*  _osr_link;         // from InstanceKlass::osr_nmethods_head
   nmethod*  _scavenge_root_link; // from CodeCache::scavenge_root_nmethods
@@ -262,7 +267,11 @@ class nmethod : public CodeBlob {
           ExceptionHandlerTable* handler_table,
           ImplicitExceptionTable* nul_chk_table,
           AbstractCompiler* compiler,
-          int comp_level);
+          int comp_level
+#ifdef GRAAL
+          , Handle installed_code = NULL
+#endif
+          );
 
   // helper methods
   void* operator new(size_t size, int nmethod_size);
@@ -280,7 +289,7 @@ class nmethod : public CodeBlob {
   // Inform external interfaces that a compiled method has been unloaded
   void post_compiled_method_unload();
 
-  // Initailize fields to their default values
+  // Initialize fields to their default values
   void init_defaults();
 
  public:
@@ -298,7 +307,11 @@ class nmethod : public CodeBlob {
                               ExceptionHandlerTable* handler_table,
                               ImplicitExceptionTable* nul_chk_table,
                               AbstractCompiler* compiler,
-                              int comp_level);
+                              int comp_level
+#ifdef GRAAL
+                              , Handle installed_code = NULL
+#endif
+  );
 
   static nmethod* new_native_nmethod(methodHandle method,
                                      int compile_id,
@@ -337,8 +350,12 @@ class nmethod : public CodeBlob {
   bool is_osr_method() const                      { return _entry_bci != InvocationEntryBci; }
 
   bool is_compiled_by_c1() const;
+  bool is_compiled_by_graal() const;
   bool is_compiled_by_c2() const;
   bool is_compiled_by_shark() const;
+
+
+#define CHECK_POSITIVE(val) assert(val, "should be positive")
 
   // boundaries for different parts
   address consts_begin          () const          { return           header_begin() + _consts_offset        ; }
@@ -347,8 +364,8 @@ class nmethod : public CodeBlob {
   address insts_end             () const          { return           header_begin() + _stub_offset          ; }
   address stub_begin            () const          { return           header_begin() + _stub_offset          ; }
   address stub_end              () const          { return           header_begin() + _oops_offset          ; }
-  address exception_begin       () const          { return           header_begin() + _exception_offset     ; }
-  address deopt_handler_begin   () const          { return           header_begin() + _deoptimize_offset    ; }
+  address exception_begin       () const          { assert(_exception_offset >= 0, "no exception handler"); return header_begin() + _exception_offset ; }
+  address deopt_handler_begin   () const          { assert(_deoptimize_offset >= 0, "no deopt handler"); return header_begin() + _deoptimize_offset ; }
   address deopt_mh_handler_begin() const          { return           header_begin() + _deoptimize_mh_offset ; }
   address unwind_handler_begin  () const          { return _unwind_handler_offset != -1 ? (header_begin() + _unwind_handler_offset) : NULL; }
   oop*    oops_begin            () const          { return (oop*)   (header_begin() + _oops_offset)         ; }
@@ -559,6 +576,11 @@ public:
   // Evolution support. We make old (discarded) compiled methods point to new Method*s.
   void set_method(Method* method) { _method = method; }
 
+#ifdef GRAAL
+  oop graal_installed_code() { return _graal_installed_code ; }
+  void set_graal_installed_code(oop installed_code) { _graal_installed_code = installed_code;  }
+#endif
+
   // GC support
   void do_unloading(BoolObjectClosure* is_alive, bool unloading_occurred);
   bool can_unload(BoolObjectClosure* is_alive, oop* root, bool unloading_occurred);
@@ -608,7 +630,10 @@ public:
   // Deopt
   // Return true is the PC is one would expect if the frame is being deopted.
   bool is_deopt_pc      (address pc) { return is_deopt_entry(pc) || is_deopt_mh_entry(pc); }
-  bool is_deopt_entry   (address pc) { return pc == deopt_handler_begin(); }
+
+  // (thomaswue) When using graal, the address might be off by 5 (because this is the size of the call instruction.
+  // (thomaswue) TODO: Replace this by a more general mechanism.
+  bool is_deopt_entry   (address pc) { return pc == deopt_handler_begin() GRAAL_ONLY( || pc == deopt_handler_begin() + 5); }
   bool is_deopt_mh_entry(address pc) { return pc == deopt_mh_handler_begin(); }
   // Accessor/mutator for the original pc of a frame before a frame was deopted.
   address get_original_pc(const frame* fr) { return *orig_pc_addr(fr); }
@@ -659,7 +684,7 @@ public:
 
   // Prints a comment for one native instruction (reloc info, pc desc)
   void print_code_comment_on(outputStream* st, int column, address begin, address end);
-  static void print_statistics()                  PRODUCT_RETURN;
+  static void print_statistics();
 
   // Compiler task identification.  Note that all OSR methods
   // are numbered in an independent sequence if CICountOSR is true,
@@ -743,5 +768,20 @@ class nmethodLocker : public StackObj {
     lock_nmethod(_nm);
   }
 };
+
+#ifdef GRAAL
+class DebugScopedNMethod : public DebugScopedValue {
+private:
+  nmethod* _nm;
+public:
+  DebugScopedNMethod(const char* file, int line, nmethod* nm) : DebugScopedValue(file, line), _nm(nm) {}
+  void print_on(outputStream* st);
+};
+#define DS_NMETHOD(nm) DebugScopedNMethod __dsnm__(__FILE__, __LINE__, nm)
+#define DS_NMETHOD1(name, nm) DebugScopedNMethod name(__FILE__, __LINE__, nm)
+#else
+#define DS_NMETHOD(nm) do {} while (0)
+#define DS_NMETHOD1(name, nm) do {} while (0)
+#endif
 
 #endif // SHARE_VM_CODE_NMETHOD_HPP

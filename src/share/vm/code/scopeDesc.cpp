@@ -31,21 +31,23 @@
 #include "runtime/handles.inline.hpp"
 
 
-ScopeDesc::ScopeDesc(const nmethod* code, int decode_offset, int obj_decode_offset, bool reexecute, bool return_oop) {
+ScopeDesc::ScopeDesc(const nmethod* code, int decode_offset, int obj_decode_offset, bool reexecute, bool rethrow_exception, bool return_oop) {
   _code          = code;
   _decode_offset = decode_offset;
   _objects       = decode_object_values(obj_decode_offset);
   _reexecute     = reexecute;
   _return_oop    = return_oop;
+  _rethrow_exception = rethrow_exception;
   decode_body();
 }
 
-ScopeDesc::ScopeDesc(const nmethod* code, int decode_offset, bool reexecute, bool return_oop) {
+ScopeDesc::ScopeDesc(const nmethod* code, int decode_offset, bool reexecute, bool rethrow_exception, bool return_oop) {
   _code          = code;
   _decode_offset = decode_offset;
   _objects       = decode_object_values(DebugInformationRecorder::serialized_null);
   _reexecute     = reexecute;
   _return_oop    = return_oop;
+  _rethrow_exception = rethrow_exception;
   decode_body();
 }
 
@@ -55,6 +57,7 @@ ScopeDesc::ScopeDesc(const ScopeDesc* parent) {
   _decode_offset = parent->_sender_decode_offset;
   _objects       = parent->_objects;
   _reexecute     = false; //reexecute only applies to the first scope
+  _rethrow_exception = false;
   _return_oop    = false;
   decode_body();
 }
@@ -70,6 +73,9 @@ void ScopeDesc::decode_body() {
     _locals_decode_offset = DebugInformationRecorder::serialized_null;
     _expressions_decode_offset = DebugInformationRecorder::serialized_null;
     _monitors_decode_offset = DebugInformationRecorder::serialized_null;
+#ifdef GRAAL
+    _deferred_writes_decode_offset = DebugInformationRecorder::serialized_null;
+#endif // GRAAL
   } else {
     // decode header
     DebugInfoReadStream* stream  = stream_at(decode_offset());
@@ -82,6 +88,9 @@ void ScopeDesc::decode_body() {
     _locals_decode_offset      = stream->read_int();
     _expressions_decode_offset = stream->read_int();
     _monitors_decode_offset    = stream->read_int();
+#ifdef GRAAL
+    _deferred_writes_decode_offset = stream->read_int();
+#endif // GRAAL
   }
 }
 
@@ -122,6 +131,25 @@ GrowableArray<MonitorValue*>* ScopeDesc::decode_monitor_values(int decode_offset
   }
   return result;
 }
+
+#ifdef GRAAL
+
+GrowableArray<DeferredWriteValue*>* ScopeDesc::decode_deferred_writes(int decode_offset) {
+  if (decode_offset == DebugInformationRecorder::serialized_null) return NULL;
+  DebugInfoReadStream* stream  = stream_at(decode_offset);
+  int length = stream->read_int();
+  GrowableArray<DeferredWriteValue*>* result = new GrowableArray<DeferredWriteValue*> (length);
+  for (int index = 0; index < length; index++) {
+    result->push(new DeferredWriteValue(stream));
+  }
+  return result;
+}
+
+GrowableArray<DeferredWriteValue*>* ScopeDesc::deferred_writes() {
+  return decode_deferred_writes(_deferred_writes_decode_offset);
+}
+
+#endif // GRAAL
 
 DebugInfoReadStream* ScopeDesc::stream_at(int decode_offset) const {
   return new DebugInfoReadStream(_code, decode_offset, _objects);
@@ -222,8 +250,8 @@ void ScopeDesc::print_on(outputStream* st, PcDesc* pd) const {
     }
   }
 
-#ifdef COMPILER2
-  if (DoEscapeAnalysis && is_top() && _objects != NULL) {
+#if defined(COMPILER2) || defined(GRAAL)
+  if (NOT_GRAAL(DoEscapeAnalysis &&) is_top() && _objects != NULL) {
     tty->print_cr("Objects");
     for (int i = 0; i < _objects->length(); i++) {
       ObjectValue* sv = (ObjectValue*) _objects->at(i);
@@ -232,7 +260,20 @@ void ScopeDesc::print_on(outputStream* st, PcDesc* pd) const {
       tty->cr();
     }
   }
-#endif // COMPILER2
+#endif // COMPILER2 || GRAAL
+#ifdef GRAAL
+  // deferred writes
+  { GrowableArray<DeferredWriteValue*>* l = ((ScopeDesc*) this)->deferred_writes();
+    if (l != NULL) {
+      st->print_cr("   Deferred writes");
+      for (int index = 0; index < l->length(); index++) {
+        st->print("    - @%d: ", index);
+        l->at(index)->print_on(st);
+        st->cr();
+      }
+    }
+  }
+#endif
 }
 
 #endif

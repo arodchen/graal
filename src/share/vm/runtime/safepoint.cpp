@@ -79,6 +79,9 @@
 #ifdef COMPILER1
 #include "c1/c1_globals.hpp"
 #endif
+#ifdef GRAAL
+#include "graal/graalGlobals.hpp"
+#endif
 
 // --------------------------------------------------------------------------------------------------
 // Implementation of Safepoint begin/end
@@ -1078,7 +1081,7 @@ void ThreadSafepointState::handle_polling_page_exception() {
     // as otherwise we may never deliver it.
     if (thread()->has_async_condition()) {
       ThreadInVMfromJavaNoAsyncException __tiv(thread());
-      Deoptimization::deoptimize_frame(thread(), caller_fr.id());
+      Deoptimization::deoptimize_frame(thread(), caller_fr.id(), Deoptimization::Reason_constraint);
     }
 
     // If an exception has been installed we must check for a pending deoptimization
