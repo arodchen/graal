@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -20,35 +20,27 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package com.oracle.truffle.codegen.processor.template;
+/**
+ * <p>This package contains basic tests of the Truffle-Source-Code-Generation (short Codegen) API and serves at the same
+ * time as an introduction to the Codegen API for language implementors. Every test gives an example on how to use the construct explained in the class description.</p>
+ *
+ * <p>
+ * This API relies heavily on the concepts described in {@link com.oracle.truffle.api.test}. We assume that the
+ * reader is already familiarized with those concepts.
+ * </p>
+ *
+ * <p>
+ * TODO general description
+ * </p>
+ *
+ * <p>
+ * This introduction to Codegen contains items in the following recommended order:
+ *
+ * <ul>
+ * <li>How would you generate builtin functions? {@link com.oracle.truffle.api.codegen.test.BuiltinFunctionTest}</li>
+ * </ul>
+ * </p>
+ *
+ */
+package com.oracle.truffle.api.codegen.test;
 
-import java.util.*;
-
-public class MethodSpec {
-
-    private final ParameterSpec returnType;
-    private final List<ParameterSpec> parameters;
-
-    public MethodSpec(ParameterSpec returnType, List<ParameterSpec> parameters) {
-        this.returnType = returnType;
-        this.parameters = parameters;
-    }
-
-    public ParameterSpec getReturnType() {
-        return returnType;
-    }
-
-    public List<ParameterSpec> getParameters() {
-        return parameters;
-    }
-
-    public ParameterSpec findParameterSpec(String name) {
-        for (ParameterSpec spec : parameters) {
-            if (spec.getName().equals(name)) {
-                return spec;
-            }
-        }
-        return null;
-    }
-
-}

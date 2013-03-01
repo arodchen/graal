@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -20,35 +20,10 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package com.oracle.truffle.codegen.processor.template;
+package com.oracle.truffle.api.codegen.test;
 
-import java.util.*;
+import com.oracle.truffle.api.codegen.*;
 
-public class MethodSpec {
-
-    private final ParameterSpec returnType;
-    private final List<ParameterSpec> parameters;
-
-    public MethodSpec(ParameterSpec returnType, List<ParameterSpec> parameters) {
-        this.returnType = returnType;
-        this.parameters = parameters;
-    }
-
-    public ParameterSpec getReturnType() {
-        return returnType;
-    }
-
-    public List<ParameterSpec> getParameters() {
-        return parameters;
-    }
-
-    public ParameterSpec findParameterSpec(String name) {
-        for (ParameterSpec spec : parameters) {
-            if (spec.getName().equals(name)) {
-                return spec;
-            }
-        }
-        return null;
-    }
-
+@TypeSystem({int.class, String.class})
+class SimpleTypes {
 }
