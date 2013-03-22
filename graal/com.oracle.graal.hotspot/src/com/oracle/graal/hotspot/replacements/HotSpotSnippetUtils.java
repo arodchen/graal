@@ -55,6 +55,11 @@ public class HotSpotSnippetUtils {
     }
 
     @Fold
+    public static boolean useTLAB() {
+        return config().useTLAB;
+    }
+
+    @Fold
     public static boolean verifyOops() {
         return config().verifyOops;
     }
@@ -287,6 +292,36 @@ public class HotSpotSnippetUtils {
     }
 
     @Fold
+    public static int g1CardQueueIndexOffset() {
+        return config().g1CardQueueIndexOffset;
+    }
+
+    @Fold
+    public static int g1CardQueueBufferOffset() {
+        return config().g1CardQueueBufferOffset;
+    }
+
+    @Fold
+    public static int logOfHRGrainBytes() {
+        return config().logOfHRGrainBytes;
+    }
+
+    @Fold
+    public static int g1SATBQueueMarkingOffset() {
+        return config().g1SATBQueueMarkingOffset;
+    }
+
+    @Fold
+    public static int g1SATBQueueIndexOffset() {
+        return config().g1SATBQueueIndexOffset;
+    }
+
+    @Fold
+    public static int g1SATBQueueBufferOffset() {
+        return config().g1SATBQueueBufferOffset;
+    }
+
+    @Fold
     public static int superCheckOffsetOffset() {
         return config().superCheckOffsetOffset;
     }
@@ -315,6 +350,11 @@ public class HotSpotSnippetUtils {
     @Fold
     public static boolean useBiasedLocking() {
         return config().useBiasedLocking;
+    }
+
+    @Fold
+    public static boolean useG1GC() {
+        return config().useG1GC;
     }
 
     @Fold
