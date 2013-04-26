@@ -34,6 +34,7 @@ import com.oracle.graal.java.*;
 import com.oracle.graal.nodes.*;
 import com.oracle.graal.phases.*;
 import com.oracle.graal.phases.PhasePlan.PhasePosition;
+import com.oracle.graal.phases.tiers.*;
 import com.oracle.graal.ptx.*;
 
 public abstract class PTXTestBase extends GraalCompilerTest {
@@ -49,7 +50,7 @@ public abstract class PTXTestBase extends GraalCompilerTest {
         phasePlan.addPhase(PhasePosition.AFTER_PARSING, new PTXPhase());
         new PTXPhase().apply(graph);
         CompilationResult result = GraalCompiler.compileMethod(runtime, graalRuntime().getReplacements(), ptxBackend, target, graph.method(), graph, null, phasePlan, OptimisticOptimizations.NONE,
-                        new SpeculationLog());
+                        new SpeculationLog(), Suites.createDefaultSuites());
         return result;
     }
 

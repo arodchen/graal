@@ -186,7 +186,7 @@ public class InliningPhase extends Phase implements InliningCallback {
         boolean isWorthInlining(InlineInfo info, NodesToDoubles nodeProbabilities, NodesToDoubles nodeRelevance);
     }
 
-    private static class GreedySizeBasedInliningDecision implements InliningDecision {
+    protected static class GreedySizeBasedInliningDecision implements InliningDecision {
 
         private final MetaAccessProvider runtime;
         private final Replacements replacements;
@@ -375,7 +375,7 @@ public class InliningPhase extends Phase implements InliningCallback {
         }
     }
 
-    private static class CFInliningPolicy implements InliningPolicy {
+    public static class CFInliningPolicy implements InliningPolicy {
 
         private final InliningDecision inliningDecision;
         private final Assumptions assumptions;

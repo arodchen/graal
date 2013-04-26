@@ -956,6 +956,8 @@ public class InliningUtil {
             return logNotInlinedMethodAndReturnFalse(invoke, "the invoke is dead code");
         } else if (!(invoke.callTarget() instanceof MethodCallTargetNode)) {
             return logNotInlinedMethodAndReturnFalse(invoke, "the invoke has already been lowered, or has been created as a low-level node");
+        } else if (!((MethodCallTargetNode) invoke.callTarget()).isResolved()) {
+            return logNotInlinedMethodAndReturnFalse(invoke, "target method is not resolved");
         } else if (((MethodCallTargetNode) invoke.callTarget()).targetMethod() == null) {
             return logNotInlinedMethodAndReturnFalse(invoke, "target method is null");
         } else if (invoke.stateAfter() == null) {

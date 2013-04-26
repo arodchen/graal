@@ -44,6 +44,7 @@ import com.oracle.graal.nodes.extended.*;
 import com.oracle.graal.nodes.spi.*;
 import com.oracle.graal.phases.*;
 import com.oracle.graal.phases.PhasePlan.PhasePosition;
+import com.oracle.graal.phases.tiers.*;
 import com.oracle.graal.replacements.*;
 import com.oracle.graal.replacements.Snippet.ConstantParameter;
 import com.oracle.graal.replacements.SnippetTemplate.AbstractTemplates;
@@ -93,7 +94,7 @@ public abstract class Stub extends AbstractTemplates implements Snippets {
 
     /**
      * Creates a new stub container..
-     * 
+     *
      * @param linkage linkage details for a call to the stub
      */
     public Stub(HotSpotRuntime runtime, Replacements replacements, TargetDescription target, HotSpotRuntimeCallTarget linkage, String methodName) {
@@ -141,7 +142,7 @@ public abstract class Stub extends AbstractTemplates implements Snippets {
                     GraphBuilderPhase graphBuilderPhase = new GraphBuilderPhase(runtime, GraphBuilderConfiguration.getDefault(), OptimisticOptimizations.ALL);
                     phasePlan.addPhase(PhasePosition.AFTER_PARSING, graphBuilderPhase);
                     final CompilationResult compResult = GraalCompiler.compileMethod(runtime(), replacements, backend, runtime().getTarget(), getMethod(), graph, null, phasePlan,
-                                    OptimisticOptimizations.ALL, new SpeculationLog());
+                                    OptimisticOptimizations.ALL, new SpeculationLog(), Suites.createDefaultSuites());
 
                     assert definedRegisters != null;
                     code = Debug.scope("CodeInstall", new Callable<InstalledCode>() {
@@ -195,7 +196,7 @@ public abstract class Stub extends AbstractTemplates implements Snippets {
 
     /**
      * Prints a formatted string to the log stream.
-     * 
+     *
      * @param format a C style printf format value that can contain at most one conversion specifier
      *            (i.e., a sequence of characters starting with '%').
      * @param value the value associated with the conversion specifier
