@@ -145,11 +145,11 @@ public class GraalCompiler {
                     new IterativeConditionalEliminationPhase().apply(graph, highTierContext);
                 }
             }
+            InliningPhase.storeStatisticsAfterInlining(graph);
         }
         TypeProfileProxyNode.cleanFromGraph(graph);
 
         plan.runPhases(PhasePosition.HIGH_LEVEL, graph);
-
         Suites.DEFAULT.getHighTier().apply(graph, highTierContext);
 
         MidTierContext midTierContext = new MidTierContext(runtime, assumptions, replacements, target, optimisticOpts);
@@ -159,6 +159,7 @@ public class GraalCompiler {
 
         LowTierContext lowTierContext = new LowTierContext(runtime, assumptions, replacements, target);
         Suites.DEFAULT.getLowTier().apply(graph, lowTierContext);
+        InliningPhase.storeStatisticsAfterLowTier(graph);
 
         final SchedulePhase schedule = new SchedulePhase();
         schedule.apply(graph);
