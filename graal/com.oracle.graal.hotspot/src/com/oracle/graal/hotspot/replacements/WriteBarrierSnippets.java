@@ -28,8 +28,10 @@ import static com.oracle.graal.replacements.SnippetTemplate.*;
 
 import com.oracle.graal.api.code.*;
 import com.oracle.graal.api.meta.*;
+import com.oracle.graal.graph.Node.*;
 import com.oracle.graal.hotspot.nodes.*;
 import com.oracle.graal.nodes.*;
+import com.oracle.graal.nodes.extended.*;
 import com.oracle.graal.nodes.spi.*;
 import com.oracle.graal.replacements.*;
 import com.oracle.graal.replacements.Snippet.ConstantParameter;
@@ -99,9 +101,9 @@ public class WriteBarrierSnippets implements Snippets {
         Object fixedExpectedObject = FixedValueAnchorNode.getObject(expectedObject);
         Word field = (Word) Word.fromArray(fixedObject, location);
         Word previousOop = (Word) Word.fromObject(fixedExpectedObject);
-        byte markingValue = thread.readByte(HotSpotReplacementsUtil.g1SATBQueueMarkingOffset());
-        Word bufferAddress = thread.readWord(HotSpotReplacementsUtil.g1SATBQueueBufferOffset());
-        Word indexAddress = thread.add(HotSpotReplacementsUtil.g1SATBQueueIndexOffset());
+        byte markingValue = thread.readByte(g1SATBQueueMarkingOffset());
+        Word bufferAddress = thread.readWord(g1SATBQueueBufferOffset());
+        Word indexAddress = thread.add(g1SATBQueueIndexOffset());
         Word indexValue = indexAddress.readWord(0);
 
         // If the concurrent marker is enabled, the barrier is issued.
@@ -116,13 +118,13 @@ public class WriteBarrierSnippets implements Snippets {
                 // If the thread-local SATB buffer is full issue a native call which will
                 // initialize a new one and add the entry.
                 if (indexValue.notEqual(0)) {
-                    Word nextIndex = indexValue.subtract(HotSpotReplacementsUtil.wordSize());
+                    Word nextIndex = indexValue.subtract(wordSize());
                     Word logAddress = bufferAddress.add(nextIndex);
                     // Log the object to be marked as well as update the SATB's buffer next index.
                     logAddress.writeWord(0, previousOop);
                     indexAddress.writeWord(0, nextIndex);
                 } else {
-                    G1PreWriteBarrierStubCall.call(previousOop.toObject());
+                    g1PreBarrierStub(G1WBPRECALL, previousOop.toObject());
                 }
             }
         }
@@ -142,12 +144,12 @@ public class WriteBarrierSnippets implements Snippets {
         }
 
         Word writtenValue = (Word) Word.fromObject(fixedValue);
-        Word bufferAddress = thread.readWord(HotSpotReplacementsUtil.g1CardQueueBufferOffset());
-        Word indexAddress = thread.add(HotSpotReplacementsUtil.g1CardQueueIndexOffset());
-        Word indexValue = thread.readWord(HotSpotReplacementsUtil.g1CardQueueIndexOffset());
+        Word bufferAddress = thread.readWord(g1CardQueueBufferOffset());
+        Word indexAddress = thread.add(g1CardQueueIndexOffset());
+        Word indexValue = thread.readWord(g1CardQueueIndexOffset());
         // The result of the xor reveals whether the installed pointer crosses heap regions.
         // In case it does the write barrier has to be issued.
-        Word xorResult = (field.xor(writtenValue)).unsignedShiftRight(HotSpotReplacementsUtil.logOfHRGrainBytes());
+        Word xorResult = (field.xor(writtenValue)).unsignedShiftRight(logOfHeapRegionGrainBytes());
 
         // Calculate the address of the card to be enqueued to the
         // thread local card queue.
@@ -171,19 +173,29 @@ public class WriteBarrierSnippets implements Snippets {
                     // If the thread local card queue is full, issue a native call which will
                     // initialize a new one and add the card entry.
                     if (indexValue.notEqual(0)) {
-                        Word nextIndex = indexValue.subtract(HotSpotReplacementsUtil.wordSize());
+                        Word nextIndex = indexValue.subtract(wordSize());
                         Word logAddress = bufferAddress.add(nextIndex);
                         // Log the object to be scanned as well as update
                         // the card queue's next index.
                         logAddress.writeWord(0, cardAddress);
                         indexAddress.writeWord(0, nextIndex);
                     } else {
-                        G1PostWriteBarrierStubCall.call(cardAddress);
+                        g1PostBarrierStub(G1WBPOSTCALL, cardAddress);
                     }
                 }
             }
         }
     }
+
+    public static final ForeignCallDescriptor G1WBPRECALL = new ForeignCallDescriptor("write_barrier_pre", void.class, Object.class);
+
+    @NodeIntrinsic(ForeignCallNode.class)
+    private static native void g1PreBarrierStub(@ConstantNodeParameter ForeignCallDescriptor descriptor, Object object);
+
+    public static final ForeignCallDescriptor G1WBPOSTCALL = new ForeignCallDescriptor("write_barrier_post", void.class, Word.class);
+
+    @NodeIntrinsic(ForeignCallNode.class)
+    private static native void g1PostBarrierStub(@ConstantNodeParameter ForeignCallDescriptor descriptor, Word card);
 
     public static class Templates extends AbstractTemplates {
 
